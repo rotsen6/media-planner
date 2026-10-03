@@ -1,0 +1,12 @@
+node_modules/
+.next/
+coverage/
+playwright-report/
+test-results/
+.env*
+!.env.example
+# Supplied assessment material: keep private until redistribution is approved.
+data/private/
+reference/
+.DS_Store
+*.tsbuildinfo
