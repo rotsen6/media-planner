@@ -14,7 +14,11 @@ import {
   type BriefField,
 } from "./brief";
 import type { Dataset } from "./data";
-import { explainClarification, explainRecommendation } from "./evidence";
+import {
+  explainAnswer,
+  explainClarification,
+  explainRecommendation,
+} from "./evidence";
 import {
   extractionSchema,
   ModelError,
@@ -107,6 +111,30 @@ export function createWorkflow({
       ),
     };
   };
+  // Questions and small talk change nothing: reply from the current brief's evidence.
+  const answer: Node = async (state) => {
+    const brief = completeBriefSchema.safeParse(state.brief);
+    const result =
+      brief.success && !state.pending.length
+        ? recommend(brief.data, await loadData())
+        : null;
+    const needs = explainClarification({
+      brief: state.brief,
+      pending: state.pending,
+      missing: missingFields(state.brief),
+    });
+    const { request } = state;
+    const message = request.mode === "chat" ? request.message : "";
+    const text = explainAnswer(
+      state.extraction?.intent,
+      result,
+      needs,
+      message,
+    );
+    return {
+      response: turn(state, result?.status ?? "clarification", text, result),
+    };
+  };
   const graph = new StateGraph(State)
     .addNode("extract", extract, {
       timeout: ollamaConfig.timeoutMs + 2_000,
@@ -122,12 +150,24 @@ export function createWorkflow({
     .addNode("merge", merge)
     .addNode("clarify", clarify)
     .addNode("calculate", calculate)
+    .addNode("answer", answer)
     .addConditionalEdges(
       START,
       (s) => (s.request.mode === "chat" ? "extract" : "merge"),
       ["extract", "merge"],
     )
-    .addEdge("extract", "merge")
+    // Any field set or flagged makes this a brief turn, whatever intent was reported.
+    .addConditionalEdges(
+      "extract",
+      ({ extraction: e }) =>
+        !e ||
+        e.intent === "brief" ||
+        Object.keys(e.patch).length ||
+        e.issues.length
+          ? "merge"
+          : "answer",
+      ["merge", "answer"],
+    )
     .addConditionalEdges(
       "merge",
       (s) =>
@@ -138,6 +178,7 @@ export function createWorkflow({
     )
     .addEdge("clarify", END)
     .addEdge("calculate", END)
+    .addEdge("answer", END)
     .compile();
 
   return async (

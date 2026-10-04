@@ -44,11 +44,50 @@ describe.skipIf(!live)("live model", { timeout: 180_000 }, () => {
   it("maps a mobile game to Entertainment and asks only for what is missing", async () => {
     const message =
       "im making a mobile video game and looking to setup an ad campaign";
-    expect(await chat({ brief: blank, message })).toMatchObject({
+    const first = await chat({ brief: blank, message });
+    expect(first).toMatchObject({
       status: "clarification",
       brief: { vertical: "Entertainment" },
       missing: ["kpi", "geo", "budget"],
       pending: [],
+    });
+    // The natural follow-up names the KPI plainly; it must complete the brief.
+    const plan = await chat({
+      brief: first.brief,
+      message: "US, click-through rate, $40,000 budget",
+    });
+    expect(plan).toMatchObject({
+      status: "ready",
+      brief: { kpi: "ctr", geo: "US", budget: 40000 },
+    });
+  });
+  it("routes questions, small talk, and what-if changes by intent", async () => {
+    const brief = {
+      ...blank,
+      vertical: "Finance",
+      geo: "US",
+      kpi: "ctr",
+      budget: 20000,
+      impressionGoal: 800000,
+    };
+    const why = await chat({
+      brief,
+      message: "Why did you pick that product?",
+    });
+    expect(why).toMatchObject({ status: "ready", brief: { budget: 20000 } });
+    expect(why.explanation[0]).toContain("It buys");
+    const thanks = await chat({ brief: blank, message: "thanks!" });
+    expect(thanks.explanation[0]).toMatch(
+      /^You're welcome! I build media plans/,
+    );
+    const whatIf = await chat({
+      brief,
+      message: "what if the budget were 30k?",
+    });
+    // A changed budget must not clear the impression goal.
+    expect(whatIf).toMatchObject({
+      status: "ready",
+      brief: { budget: 30000, impressionGoal: 800000 },
     });
   });
   it("clears an unsupported geography, then accepts the correction", async () => {

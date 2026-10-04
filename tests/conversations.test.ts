@@ -140,6 +140,30 @@ describe("saved conversations", () => {
       first(state).revision,
     );
   });
+  it("keeps earlier plan messages current until the brief changes", () => {
+    const question = {
+      ...start,
+      requestId: "request-2",
+      message: "Why?",
+      now: 4,
+    };
+    let state = apply(workspace(), start, resolve, question, {
+      ...resolve,
+      requestId: "request-2",
+      now: 5,
+    });
+    const plans = () => first(state).messages.filter((m) => m.basedOnRevision);
+    expect(plans().map((m) => m.basedOnRevision)).toEqual([1, 1]);
+    expect(first(state).revision).toBe(1);
+    state = apply(state, {
+      type: "edit",
+      id: "first",
+      field: "budget",
+      value: "2000",
+      now: 6,
+    });
+    expect(first(state).revision).toBe(2);
+  });
   it("ignores a late completion or failure from an older request", () => {
     const state = apply(
       workspace(),

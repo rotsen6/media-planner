@@ -162,6 +162,9 @@ function Messages({
   const log = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
   const shown = useRef<string | null>(null);
+  const latest = chat.messages.findLast(
+    (m) => m.basedOnRevision === chat.revision,
+  )?.id;
   // Follow new messages unless the reader scrolled up; always follow a newly opened chat.
   useEffect(() => {
     if (shown.current !== chat.id) follow.current = true;
@@ -210,16 +213,14 @@ function Messages({
                     <span className="earlier-label">Earlier plan</span>
                   )}
                 <p>{text}</p>
-                {role === "assistant" &&
-                  basedOnRevision === chat.revision &&
-                  chat.result?.recommendation && (
-                    <button
-                      className="text-button inline-plan-link"
-                      onClick={openPlan}
-                    >
-                      View your plan <Icon name="chevron" />
-                    </button>
-                  )}
+                {id === latest && chat.result?.recommendation && (
+                  <button
+                    className="text-button inline-plan-link"
+                    onClick={openPlan}
+                  >
+                    View your plan <Icon name="chevron" />
+                  </button>
+                )}
               </article>
             ))}
             {chat.request && (

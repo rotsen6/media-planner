@@ -317,7 +317,6 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
         ...chat,
         result: null,
         dirty: false,
-        revision: chat.revision + 1,
         error: "",
         updatedAt: action.now,
         composer: action.mode === "chat" ? "" : chat.composer,
@@ -339,6 +338,8 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
       // Late answers to a stopped, edited, or replaced request are ignored.
       if (chat.request?.id !== action.requestId) return chat;
       const next = action.response;
+      // Only a changed brief makes earlier plan messages stale.
+      const revision = chat.revision + (sameBrief(chat.form, next) ? 0 : 1);
       const text =
         next.status === "ready"
           ? next.explanation[0]
@@ -348,6 +349,7 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
         form: formFromBrief(next.brief),
         pending: next.pending,
         result: next,
+        revision,
         request: null,
         planOpen: !!next.recommendation || chat.planOpen,
         updatedAt: action.now,
@@ -360,7 +362,7 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
             id: `${action.requestId}:assistant`,
             role: "assistant",
             text,
-            ...(next.recommendation ? { basedOnRevision: chat.revision } : {}),
+            ...(next.recommendation ? { basedOnRevision: revision } : {}),
           },
         ],
       };

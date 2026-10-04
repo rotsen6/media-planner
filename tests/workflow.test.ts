@@ -13,7 +13,7 @@ const complete = {
   kpi: "ctr",
   budget: 1000,
 } as const;
-const none = { patch: {}, issues: [] };
+const none = { intent: "brief", patch: {}, issues: [] };
 // A new chat sends every field, all null.
 const blank = {
   clientName: null,
@@ -39,6 +39,7 @@ const ollama = (content: string, init?: ResponseInit) =>
 describe("workflow", () => {
   it("clarifies, ends the invocation, and carries corrections across independent turns", async () => {
     const model = fake({
+      intent: "brief",
       patch: {
         geo: { value: "US", quote: "US" },
         budget: { value: 1000, quote: "$1,000" },
@@ -50,6 +51,7 @@ describe("workflow", () => {
     expect(first.status).toBe("clarification");
     expect(first.missing).toEqual(["vertical", "kpi"]);
     vi.mocked(model.extract).mockResolvedValueOnce({
+      intent: "brief",
       patch: {
         vertical: { value: "Finance", quote: "Finance" },
         kpi: { value: "ctr", quote: "CTR" },
@@ -63,6 +65,7 @@ describe("workflow", () => {
     });
     expect(second.recommendation?.recommended?.id).toBe("B");
     vi.mocked(model.extract).mockResolvedValueOnce({
+      intent: "brief",
       patch: { impressionGoal: { value: 80000, quote: "80,000" } },
       issues: [],
     });
@@ -92,6 +95,7 @@ describe("workflow", () => {
   it("keeps an ambiguous optional impression goal unresolved across turns", async () => {
     const quote = "lots of impressions";
     const model = fake({
+      intent: "brief",
       patch: { impressionGoal: { value: null, quote } },
       issues: [{ field: "impressionGoal", reason: "ambiguous", quote }],
     });
@@ -113,6 +117,7 @@ describe("workflow", () => {
     expect(second.recommendation).toBeNull();
     const remove = "Remove the impression goal";
     vi.mocked(model.extract).mockResolvedValueOnce({
+      intent: "brief",
       patch: { impressionGoal: { value: null, quote: remove } },
       issues: [],
     });
@@ -128,6 +133,7 @@ describe("workflow", () => {
   it("clears a previously valid field on an unsupported correction", async () => {
     const result = await workflow(
       fake({
+        intent: "brief",
         patch: { geo: { value: null, quote: "Canada" } },
         issues: [{ field: "geo", reason: "unsupported", quote: "Canada" }],
       }),
@@ -142,6 +148,7 @@ describe("workflow", () => {
   it("says what it understood and asks once for what is still missing", async () => {
     const result = await workflow(
       fake({
+        intent: "brief",
         patch: {
           vertical: { value: "Entertainment", quote: "mobile video game" },
         },
@@ -153,10 +160,111 @@ describe("workflow", () => {
       "Got it: Entertainment vertical. To build your plan I still need your primary KPI (click-through rate or in-view rate), geography (US, EMEA, or APAC), and budget in dollars.",
     ]);
   });
+  it("answers a question from the current plan without changing the brief", async () => {
+    const result = await workflow(
+      fake({ intent: "question", patch: {}, issues: [] }),
+    )({ mode: "chat", brief: complete, message: "Why that product?" });
+    expect(result).toMatchObject({
+      status: "ready",
+      brief: complete,
+      recommendation: { recommended: { id: "B" } },
+    });
+    expect(result.explanation[0]).toBe(
+      "Beta has the highest click-through rate (3%) of the products that fit your budget. It buys 50,000 impressions for $1,000. Alpha (2%) and Gamma (1%) also fit, but with a lower click-through rate.",
+    );
+  });
+  it("explains why a higher-rated product was not picked", async () => {
+    const result = await workflow(
+      fake({ intent: "question", patch: {}, issues: [] }),
+    )({
+      mode: "chat",
+      brief: { ...complete, impressionGoal: 80000 },
+      message: "Why not Beta?",
+    });
+    expect(result.explanation[0]).toBe(
+      "Alpha has the highest click-through rate (2%) of the products that fit your budget and 80,000-impression goal. Beta rates higher (3%), but your budget buys only 50,000 of the 80,000 impressions you need. It buys 100,000 impressions for $1,000. Gamma (1%) also fits, but with a lower click-through rate.",
+    );
+  });
+  it("replies to small talk with what it still needs", async () => {
+    const result = await workflow(
+      fake({ intent: "other", patch: {}, issues: [] }),
+    )({ mode: "chat", brief: blank, message: "hi there" });
+    expect(result).toMatchObject({ status: "clarification", brief: blank });
+    expect(result.explanation[0]).toMatch(
+      /^Hi! I build media plans from a campaign brief\. To build your plan I still need your vertical/,
+    );
+  });
+  it("answers thanks in kind once there is a plan", async () => {
+    const result = await workflow(
+      fake({ intent: "other", patch: {}, issues: [] }),
+    )({ mode: "chat", brief: complete, message: "thanks!" });
+    expect(result).toMatchObject({ status: "ready", brief: complete });
+    expect(result.explanation[0]).toBe(
+      "You're welcome! I can explain this plan or change it. Feel free to ask why it was chosen, or tell me what to change.",
+    );
+  });
+  it("treats a question that sets a field as a brief change", async () => {
+    const result = await workflow(
+      fake({
+        intent: "question",
+        patch: { budget: { value: 2000, quote: "2000" } },
+        issues: [],
+      }),
+    )({
+      mode: "chat",
+      brief: complete,
+      message: "What if the budget were 2000?",
+    });
+    expect(result).toMatchObject({ status: "ready", brief: { budget: 2000 } });
+  });
+  it("explains why the top-KPI product was not viable", async () => {
+    const result = await workflow(fake())({
+      mode: "brief",
+      brief: { ...complete, impressionGoal: 80000 },
+    });
+    expect(result.explanation[0]).toBe(
+      "Alpha is the highest-ranked feasible single product, with a 2% historical click-through rate benchmark. Beta has a higher click-through rate (3%), but your budget buys only 50,000 of the 80,000 impressions you need.",
+    );
+  });
+  it("uses a plainly named KPI the model skipped", async () => {
+    const result = await workflow(
+      fake({
+        intent: "brief",
+        patch: {
+          geo: { value: "US", quote: "US" },
+          budget: { value: 40000, quote: "$40,000" },
+        },
+        issues: [],
+      }),
+    )({
+      mode: "chat",
+      brief: { vertical: "Finance" },
+      message: "US, click-through rate, $40,000 budget",
+    });
+    expect(result).toMatchObject({ status: "ready", brief: { kpi: "ctr" } });
+  });
+  it("keeps a field when a null quotes no removal", async () => {
+    const result = await workflow(
+      fake({
+        intent: "brief",
+        patch: {
+          budget: { value: 2000, quote: "$2,000" },
+          impressionGoal: { value: null, quote: "$2,000" },
+        },
+        issues: [],
+      }),
+    )({
+      mode: "chat",
+      brief: { ...complete, impressionGoal: 80000 },
+      message: "Make it $2,000",
+    });
+    expect(result.brief).toMatchObject({ budget: 2000, impressionGoal: 80000 });
+  });
   it("drops issues that reuse one quote for two fields", async () => {
     const quote = "looking to setup an ad campaign";
     const result = await workflow(
       fake({
+        intent: "brief",
         patch: {},
         issues: [
           { field: "kpi", reason: "unsupported", quote },
@@ -173,7 +281,11 @@ describe("workflow", () => {
   });
   it("rejects invented quotes, empty output, and injected derived values", async () => {
     const invented = await workflow(
-      fake({ patch: { budget: { value: 5000, quote: "$5,000" } }, issues: [] }),
+      fake({
+        intent: "brief",
+        patch: { budget: { value: 5000, quote: "$5,000" } },
+        issues: [],
+      }),
     )({ mode: "chat", brief: complete, message: "Hello" });
     expect(invented).toMatchObject({
       status: "error",
@@ -182,7 +294,11 @@ describe("workflow", () => {
     });
     for (const output of [
       {},
-      { patch: { ctr: { value: 1, quote: "CTR" } }, issues: [] },
+      {
+        intent: "brief",
+        patch: { ctr: { value: 1, quote: "CTR" } },
+        issues: [],
+      },
     ]) {
       const result = await workflow(fake(output))({
         mode: "chat",
@@ -252,6 +368,7 @@ describe("workflow", () => {
 describe("Ollama HTTP adapter", () => {
   it("keeps quotes for known fields and an unresolved field in the same response", async () => {
     const output = {
+      intent: "brief",
       patch: {
         vertical: { value: "Finance", quote: "Finance" },
         geo: { value: "EMEA", quote: "EMEA" },

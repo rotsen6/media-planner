@@ -49,16 +49,17 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  Mode{Input mode} -->|Chat| Extract[Extract quoted brief changes]
+  Mode{Input mode} -->|Chat| Extract[Extract quoted changes and intent]
   Mode -->|Brief editor| Merge[Validate and merge brief]
-  Extract --> Merge
+  Extract -->|Brief change| Merge
+  Extract -->|Question or small talk| Answer[Answer from the current plan's evidence]
   Merge --> Complete{Required fields and ambiguities resolved?}
   Complete -->|No| Clarify[Return clarification]
   Complete -->|Yes| Calculate[Calculate and validate plan]
   Calculate --> Return[Return plan and deterministic explanation]
 ```
 
-The graph has four nodes: extract, merge, clarify, and calculate. A successful chat needs one model call for extraction; the calculator validates its own result and explanation text comes directly from verified evidence. Clarification ends the request; the next message supplies the current brief and unresolved fields. The server recalculates every recommendation from its evidence. No campaign state lives in a server global and no graph checkpointer is needed.
+The graph has five nodes: extract, merge, clarify, calculate, and answer. A chat turn needs one model call, which extracts quoted changes and classifies intent as a brief change, a question, or small talk. Code routes on that intent, and any message that sets or flags a field counts as a brief change. Questions get the plan's rationale, recalculated from evidence; small talk gets a short prompt for what is still needed; the calculator validates its own result and explanation text comes directly from verified evidence. Clarification ends the request; the next message supplies the current brief and unresolved fields. The server recalculates every recommendation from its evidence. No campaign state lives in a server global and no graph checkpointer is needed.
 
 | Code                                                              | Responsibility                                                       |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------- |
@@ -100,7 +101,7 @@ npm run check       # TypeScript, unit/integration tests, production build
 npm run test:live   # Imported data + real Ollama model; no running app needed
 ```
 
-Nine dataset-specific tests skip when private inputs are absent, and the live-model tests run only through `test:live`. Model doubles test workflow behavior; `test:live` sends the seven supplied briefs plus an unsupported geography and its correction through the real model and chat route. Tests cover calculations, workflow failures, quoted model output, saved chats, and debounced writes.
+Nine dataset-specific tests skip when private inputs are absent, and the live-model tests run only through `test:live`. Model doubles test workflow behavior; `test:live` sends the seven supplied briefs, a vague mobile-game brief, a question, small talk, a what-if change, and an unsupported geography with its correction through the real model and chat route. Tests cover calculations, workflow failures, quoted model output, saved chats, and debounced writes.
 
 ## References and delivery
 
