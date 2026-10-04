@@ -85,17 +85,16 @@ export function createWorkflow({
     }
     return { brief: mergeBrief(brief, patch), pending: [...open] };
   };
-  const clarify: Node = (state) => ({
-    response: turn(
-      state,
-      "clarification",
-      explainClarification(
-        state.extraction?.issues ?? [],
-        state.pending,
-        missingFields(state.brief),
-      ),
-    ),
-  });
+  const clarify: Node = (state) => {
+    const text = explainClarification({
+      brief: state.brief,
+      changed: Object.keys(state.extraction?.patch ?? {}) as BriefField[],
+      issues: state.extraction?.issues,
+      pending: state.pending,
+      missing: missingFields(state.brief),
+    });
+    return { response: turn(state, "clarification", [text]) };
+  };
   const calculate: Node = async (state) => {
     const brief = completeBriefSchema.parse(state.brief);
     const result = recommend(brief, await loadData());

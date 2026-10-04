@@ -14,6 +14,17 @@ const complete = {
   budget: 1000,
 } as const;
 const none = { patch: {}, issues: [] };
+// A new chat sends every field, all null.
+const blank = {
+  clientName: null,
+  vertical: null,
+  kpi: null,
+  geo: null,
+  budget: null,
+  impressionGoal: null,
+};
+const game =
+  "im making a mobile video game and looking to setup an ad campaign";
 const fake = (output: unknown = none): LanguageModel => ({
   extract: vi.fn(async () => output),
 });
@@ -124,6 +135,41 @@ describe("workflow", () => {
     expect(result.status).toBe("clarification");
     expect(result.brief.geo).toBeNull();
     expect(result.recommendation).toBeNull();
+    expect(result.explanation).toEqual([
+      "“Canada” isn't a supported geography. Please use US, EMEA, or APAC.",
+    ]);
+  });
+  it("says what it understood and asks once for what is still missing", async () => {
+    const result = await workflow(
+      fake({
+        patch: {
+          vertical: { value: "Entertainment", quote: "mobile video game" },
+        },
+        issues: [],
+      }),
+    )({ mode: "chat", brief: blank, message: game });
+    expect(result).toMatchObject({ status: "clarification", pending: [] });
+    expect(result.explanation).toEqual([
+      "Got it: Entertainment vertical. To build your plan I still need your primary KPI (click-through rate or in-view rate), geography (US, EMEA, or APAC), and budget in dollars.",
+    ]);
+  });
+  it("drops issues that reuse one quote for two fields", async () => {
+    const quote = "looking to setup an ad campaign";
+    const result = await workflow(
+      fake({
+        patch: {},
+        issues: [
+          { field: "kpi", reason: "unsupported", quote },
+          { field: "geo", reason: "unsupported", quote },
+        ],
+      }),
+    )({ mode: "chat", brief: blank, message: game });
+    expect(result).toMatchObject({
+      status: "clarification",
+      pending: [],
+      missing: ["vertical", "kpi", "geo", "budget"],
+    });
+    expect(result.explanation.join(" ")).not.toContain("supported");
   });
   it("rejects invented quotes, empty output, and injected derived values", async () => {
     const invented = await workflow(
@@ -232,14 +278,20 @@ describe("Ollama HTTP adapter", () => {
           JSON.stringify({ message: { content: JSON.stringify(none) } }),
         ),
     );
-    expect(await createOllamaModel({ fetcher }).extract("Hello", {})).toEqual(
-      none,
-    );
+    const brief = { ...blank, vertical: "Finance" as const };
+    expect(
+      await createOllamaModel({ fetcher }).extract("Hello", brief),
+    ).toEqual(none);
     const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).toMatchObject({
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({
       stream: false,
       options: { temperature: 0 },
       format: { type: "object" },
+    });
+    // The model sees only known values; nulls invited invented issues.
+    expect(JSON.parse(body.messages[1].content).currentBrief).toEqual({
+      vertical: "Finance",
     });
   });
   it("rejects malformed JSON, wrong envelopes, oversized output, and unavailable models", async () => {

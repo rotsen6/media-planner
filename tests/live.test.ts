@@ -8,6 +8,15 @@ import { chatRequest } from "./fixtures";
 const live = !!process.env.LIVE;
 const briefs = live ? await loadExampleBriefs() : [];
 const expected = ["P003", "P004", "P006", "P003", "P006", "vertical", "kpi"];
+// What the browser sends for a new chat: every field, all null.
+const blank = {
+  clientName: null,
+  vertical: null,
+  kpi: null,
+  geo: null,
+  budget: null,
+  impressionGoal: null,
+};
 
 async function chat(body: object): Promise<TurnResponse> {
   const json = JSON.stringify({ mode: "chat", ...body });
@@ -20,7 +29,7 @@ describe.skipIf(!live)("live model", { timeout: 180_000 }, () => {
   it.each(
     briefs.map((message, i) => ({ message, n: i + 1, want: expected[i] })),
   )("brief $n: $want", async ({ message, n, want }) => {
-    const result = await chat({ brief: {}, message });
+    const result = await chat({ brief: blank, message });
     if (n <= 5)
       expect(result).toMatchObject({
         status: "ready",
@@ -31,6 +40,16 @@ describe.skipIf(!live)("live model", { timeout: 180_000 }, () => {
         status: "clarification",
         missing: [want],
       });
+  });
+  it("maps a mobile game to Entertainment and asks only for what is missing", async () => {
+    const message =
+      "im making a mobile video game and looking to setup an ad campaign";
+    expect(await chat({ brief: blank, message })).toMatchObject({
+      status: "clarification",
+      brief: { vertical: "Entertainment" },
+      missing: ["kpi", "geo", "budget"],
+      pending: [],
+    });
   });
   it("clears an unsupported geography, then accepts the correction", async () => {
     const unresolved = await chat({

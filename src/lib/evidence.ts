@@ -1,3 +1,4 @@
+import type { Brief, BriefField } from "./brief";
 import type { EvaluatedProduct, Recommendation } from "./recommend";
 
 const format = (options: Intl.NumberFormatOptions) =>
@@ -23,32 +24,82 @@ export const productReason = (p: EvaluatedProduct) =>
       "Meets the constraints; ranked by the primary KPI, then forecast confidence on ties.",
   })[p.reason];
 
-const fieldLabels = {
+const needs = {
   vertical: "vertical (Retail, Finance, Travel, QSR, or Entertainment)",
   kpi: "primary KPI (click-through rate or in-view rate)",
   geo: "geography (US, EMEA, or APAC)",
   budget: "budget in dollars",
 };
+const labels: Record<BriefField, string> = {
+  clientName: "client name",
+  vertical: "vertical",
+  kpi: "primary KPI",
+  geo: "geography",
+  budget: "budget",
+  impressionGoal: "minimum impression goal",
+};
+const choices: Record<BriefField, string> = {
+  clientName: "the client or advertiser name",
+  vertical: "Retail, Finance, Travel, QSR, or Entertainment",
+  kpi: "click-through rate or in-view rate",
+  geo: "US, EMEA, or APAC",
+  budget: "a dollar amount",
+  impressionGoal: "a number of impressions, or no minimum",
+};
+const verbs = {
+  unsupported: "isn't a supported",
+  invalid: "isn't a valid",
+  ambiguous: "is ambiguous for the",
+};
+const shown = (field: BriefField, value: string | number) =>
+  ({
+    clientName: `client ${value}`,
+    vertical: `${value} vertical`,
+    kpi: `${kpiLabel(String(value))} as the KPI`,
+    geo: `${value} geography`,
+    budget: `${currency(Number(value))} budget`,
+    impressionGoal: `${number(Number(value))} minimum impressions`,
+  })[field];
+const list = (items: string[]) =>
+  items.length < 3
+    ? items.join(" and ")
+    : `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
 
-/** Invalid values first; earlier open questions only when nothing new is invalid. */
-export function explainClarification(
-  issues: { field: string; reason: string }[],
-  pending: string[],
-  missing: (keyof typeof fieldLabels)[],
-): string[] {
-  const lines = issues.map(
-    (i) =>
-      `The requested ${i.field} is ${i.reason}. Please provide a supported value or edit the campaign brief.`,
-  );
-  if (!issues.length && pending.length)
-    lines.push(
-      `Please resolve the earlier question about ${pending.join(", ")}. Provide a value, explicitly remove an optional requirement, or edit the brief and recalculate.`,
-    );
-  if (missing.length)
-    lines.push(
-      `To recommend a plan, I need your ${missing.map((key) => fieldLabels[key]).join(", ")}.`,
-    );
-  return lines;
+/** One paragraph: what this message set, what it could not use, and what is still needed. */
+export function explainClarification({
+  brief,
+  changed = [],
+  issues = [],
+  pending,
+  missing,
+}: {
+  brief: Brief;
+  changed?: BriefField[];
+  issues?: { field: BriefField; reason: keyof typeof verbs; quote: string }[];
+  pending: BriefField[];
+  missing: (keyof typeof needs)[];
+}): string {
+  const flagged = new Set(issues.map((i) => i.field));
+  const got = changed.flatMap((field) => {
+    const value = brief[field];
+    return value == null || flagged.has(field) ? [] : [shown(field, value)];
+  });
+  const needed = missing.filter((field) => !flagged.has(field));
+  return [
+    got.length ? `Got it: ${list(got)}.` : "",
+    ...issues.map(
+      (i) =>
+        `“${i.quote}” ${verbs[i.reason]} ${labels[i.field]}. Please use ${choices[i.field]}.`,
+    ),
+    !issues.length && pending.length
+      ? `Please settle the ${list(pending.map((f) => labels[f]))}: give a value, drop it if it is optional, or edit the brief.`
+      : "",
+    needed.length
+      ? `To build your plan I still need your ${list(needed.map((f) => needs[f]))}.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function explainRecommendation(result: Recommendation): string[] {
