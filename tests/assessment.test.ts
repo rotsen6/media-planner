@@ -1,55 +1,30 @@
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadDataset, loadExampleBriefs } from "../src/lib/data";
 import { recommend } from "../src/lib/recommend";
 import { createWorkflow } from "../src/lib/workflow";
-import type { Brief } from "../src/lib/brief";
+import type { Brief, CompleteBrief } from "../src/lib/brief";
 import type { LanguageModel } from "../src/lib/model";
 
 // These are regression expectations, not labels supplied by the assessment.
 // The evaluator's private fixtures are imported locally and excluded from publication.
+const brief = (
+  vertical: CompleteBrief["vertical"],
+  geo: CompleteBrief["geo"],
+  kpi: CompleteBrief["kpi"],
+  budget: number,
+  impressionGoal?: number,
+): CompleteBrief => ({ vertical, geo, kpi, budget, impressionGoal });
+const qsr = brief("QSR", "US", "inViewRate", 15000, 800000);
+const finance = brief("Finance", "US", "ctr", 20000, 800000);
 const cases: { brief: Brief; winner?: string; missing?: string[] }[] = [
+  { brief: brief("Retail", "US", "ctr", 30000), winner: "P003" },
+  { brief: qsr, winner: "P004" },
+  { brief: brief("Entertainment", "EMEA", "ctr", 40000), winner: "P006" },
+  { brief: finance, winner: "P003" },
   {
-    brief: { vertical: "Retail", geo: "US", kpi: "ctr", budget: 30000 },
-    winner: "P003",
-  },
-  {
-    brief: {
-      vertical: "QSR",
-      geo: "US",
-      kpi: "inViewRate",
-      budget: 15000,
-      impressionGoal: 800000,
-    },
-    winner: "P004",
-  },
-  {
-    brief: {
-      vertical: "Entertainment",
-      geo: "EMEA",
-      kpi: "ctr",
-      budget: 40000,
-    },
-    winner: "P006",
-  },
-  {
-    brief: {
-      vertical: "Finance",
-      geo: "US",
-      kpi: "ctr",
-      budget: 20000,
-      impressionGoal: 800000,
-    },
-    winner: "P003",
-  },
-  {
-    brief: {
-      vertical: "Travel",
-      geo: "APAC",
-      kpi: "inViewRate",
-      budget: 18000,
-      impressionGoal: 850000,
-    },
+    brief: brief("Travel", "APAC", "inViewRate", 18000, 850000),
     winner: "P006",
   },
   {
@@ -67,7 +42,8 @@ const noModel: LanguageModel = {
   },
 };
 
-describe.skipIf(!existsSync("data/private/product_catalog.csv"))(
+const dataDir = process.env.DATA_DIR ?? "data/private";
+describe.skipIf(!existsSync(resolve(dataDir, "product_catalog.csv")))(
   "supplied assessment evidence (local only)",
   () => {
     it("validates all supplied rows and balanced history", async () => {
@@ -98,36 +74,17 @@ describe.skipIf(!existsSync("data/private/product_catalog.csv"))(
     );
     it("preserves the 51-dollar QSR edge and the Finance CPM constraint", async () => {
       const data = await loadDataset();
-      const qsr = recommend(
-        {
-          vertical: "QSR",
-          geo: "US",
-          kpi: "inViewRate",
-          budget: 15000,
-          impressionGoal: 800000,
-        },
-        data,
-      );
-      expect(qsr.recommended).toMatchObject({
+      expect(recommend(qsr, data).recommended).toMatchObject({
         id: "P004",
         spend: 14949,
         unspentBudget: 51,
         impressions: 1661000,
       });
-      const finance = recommend(
-        {
-          vertical: "Finance",
-          geo: "US",
-          kpi: "ctr",
-          budget: 20000,
-          impressionGoal: 800000,
-        },
-        data,
-      );
+      const result = recommend(finance, data);
       expect(
-        finance.evaluatedProducts.find((p) => p.productId === "P005"),
+        result.evaluatedProducts.find((p) => p.productId === "P005"),
       ).toMatchObject({ budgetImpressions: 625000, reason: "budget_goal" });
-      expect(finance.recommended?.impressions).toBeCloseTo(1333333.3333333333);
+      expect(result.recommended?.impressions).toBeCloseTo(1333333.3333333333);
     });
   },
 );

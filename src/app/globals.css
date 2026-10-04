@@ -19,6 +19,7 @@ body {
   height: 100%;
   background: var(--canvas);
   color: var(--text);
+  -webkit-tap-highlight-color: transparent;
 }
 body,
 button,
@@ -28,55 +29,28 @@ textarea {
   font-family: var(--font-ibm-plex), Arial, sans-serif;
   font-size: 14px;
   font-weight: 400;
-}
-button,
-input,
-textarea,
-select {
   color: inherit;
 }
 button {
   cursor: pointer;
+  border: 0;
+  background: none;
 }
 button:disabled {
   cursor: not-allowed;
   opacity: 0.42;
 }
-button,
-summary,
-a,
-input,
-select,
-textarea {
-  -webkit-tap-highlight-color: transparent;
-}
-button {
-  border: 0;
-  background: none;
-}
-button:focus-visible,
-summary:focus-visible,
-a:focus-visible {
+:is(button, summary, input, textarea, select):focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: 2px solid var(--focus);
+:is(input, textarea, select):focus-visible {
   outline-offset: 2px;
 }
-h1,
-h2,
-h3,
-h4,
-p {
+:is(h1, h2, h3, h4, p) {
   margin: 0;
 }
-h1,
-h2,
-h3,
-h4 {
+:is(h1, h2, h3, h4) {
   font-weight: 500;
 }
 p {
@@ -84,9 +58,6 @@ p {
 }
 svg {
   flex-shrink: 0;
-}
-a {
-  color: inherit;
 }
 summary {
   cursor: pointer;
@@ -164,7 +135,6 @@ input::-webkit-inner-spin-button {
 }
 .app-name {
   color: var(--muted);
-  font-size: 14px;
   white-space: nowrap;
 }
 .icon-button {
@@ -203,11 +173,10 @@ input::-webkit-inner-spin-button {
 .plan-toggle svg {
   width: 16px;
 }
-.workspace {
-  display: flex;
-  flex: 1;
-  min-height: 0;
+.narrow-plan-label {
+  display: none;
 }
+.workspace,
 .work-area {
   display: flex;
   flex: 1;
@@ -252,13 +221,17 @@ input::-webkit-inner-spin-button {
   color: var(--muted);
   margin: 18px 14px 10px;
 }
-.history-scroll {
+.history-scroll,
+.conversation-scroll,
+.plan-scroll {
   overflow: auto;
-  flex: 1;
   min-height: 0;
-  padding: 0 10px 30px;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+}
+.history-scroll {
+  flex: 1;
+  padding: 0 10px 30px;
 }
 .history-row {
   border-radius: 7px;
@@ -397,15 +370,10 @@ input::-webkit-inner-spin-button {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  position: relative;
 }
 .conversation-scroll {
   flex: 1;
-  min-height: 0;
-  overflow: auto;
   padding: 36px 32px 20px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
 }
 .conversation-inner {
   max-width: 700px;
@@ -419,7 +387,6 @@ input::-webkit-inner-spin-button {
 }
 .message {
   margin-bottom: 34px;
-  max-width: 100%;
   overflow-wrap: anywhere;
 }
 .message-author {
@@ -464,7 +431,8 @@ input::-webkit-inner-spin-button {
   align-items: center;
   gap: 4px;
 }
-.inline-plan-link svg {
+.inline-plan-link svg,
+.evidence > summary svg {
   width: 14px;
   height: 14px;
 }
@@ -499,7 +467,6 @@ input::-webkit-inner-spin-button {
   font-weight: 500;
   letter-spacing: 1.5px;
   color: var(--muted);
-  line-height: 1.6;
 }
 .welcome h1 {
   font-size: 36px;
@@ -510,7 +477,6 @@ input::-webkit-inner-spin-button {
 }
 .welcome > p:last-child {
   font-size: 16px;
-  line-height: 1.6;
   color: var(--muted);
 }
 .empty-chat .composer-area {
@@ -546,9 +512,6 @@ input::-webkit-inner-spin-button {
   line-height: 1.6;
   scrollbar-width: thin;
 }
-.composer textarea:focus-visible {
-  outline: none;
-}
 .composer-bottom {
   display: flex;
   align-items: center;
@@ -570,9 +533,6 @@ input::-webkit-inner-spin-button {
   background: var(--orange);
   color: var(--indigo);
   flex-shrink: 0;
-}
-.send-button:hover:not(:disabled) {
-  background: #ff8533;
 }
 .send-button:disabled {
   background: #27394f;
@@ -690,10 +650,6 @@ input::-webkit-inner-spin-button {
 }
 .plan-scroll {
   padding: 0 26px 30px;
-  overflow: auto;
-  min-height: 0;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
 }
 .section-heading {
   display: flex;
@@ -733,7 +689,6 @@ input::-webkit-inner-spin-button {
 .brief-summary dd {
   text-align: right;
   margin: 0;
-  text-transform: none;
 }
 .brief-summary dd::first-letter {
   text-transform: uppercase;
@@ -780,7 +735,8 @@ input::-webkit-inner-spin-button {
   color: var(--indigo);
   background: var(--orange);
 }
-.primary-button:hover {
+.primary-button:hover,
+.send-button:hover:not(:disabled) {
   background: #ff8533;
 }
 .secondary-button {
@@ -883,10 +839,6 @@ input::-webkit-inner-spin-button {
   font-size: 12px;
   color: #d5dfed;
 }
-.evidence > summary svg {
-  width: 14px;
-  height: 14px;
-}
 .evidence[open] > summary svg {
   transform: rotate(90deg);
 }
@@ -978,7 +930,8 @@ input::-webkit-inner-spin-button {
   }
 }
 @media (max-width: 1199px) {
-  .plan-open .chat-pane {
+  .plan-open .chat-pane,
+  .wide-plan-label {
     display: none;
   }
   .plan-pane {
@@ -1013,9 +966,14 @@ input::-webkit-inner-spin-button {
   .app-header {
     padding-right: 18px;
   }
+  .narrow-plan-label {
+    display: inline;
+  }
 }
 @media (max-width: 899px) {
-  .desktop-history {
+  .desktop-history,
+  .brand-divider,
+  .app-name {
     display: none;
   }
   .compact-new.desktop-hidden {
@@ -1032,10 +990,6 @@ input::-webkit-inner-spin-button {
   .wordmark {
     width: 72px;
     height: 27px;
-  }
-  .brand-divider,
-  .app-name {
-    display: none;
   }
   .compact-new {
     margin-left: 2px;
@@ -1127,13 +1081,9 @@ input::-webkit-inner-spin-button {
   }
   .plan-metrics {
     grid-template-columns: 1fr 1fr;
-    gap: 20px 12px;
   }
   .plan-metrics .lead-metric {
     grid-column: 1/-1;
-  }
-  .lead-metric dd {
-    font-size: 42px;
   }
   .panel-heading {
     padding: 24px 22px 20px;
@@ -1167,19 +1117,5 @@ input::-webkit-inner-spin-button {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
-  }
-}
-[hidden] {
-  display: none !important;
-}
-.narrow-plan-label {
-  display: none;
-}
-@media (max-width: 1199px) {
-  .wide-plan-label {
-    display: none;
-  }
-  .narrow-plan-label {
-    display: inline;
   }
 }

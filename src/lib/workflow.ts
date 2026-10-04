@@ -8,117 +8,107 @@ import {
 import {
   briefSchema,
   completeBriefSchema,
-  fieldLabels,
   mergeBrief,
   missingFields,
   type Brief,
+  type BriefField,
 } from "./brief";
 import type { Dataset } from "./data";
-import { explainRecommendation } from "./evidence";
+import { explainClarification, explainRecommendation } from "./evidence";
 import {
   extractionSchema,
   ModelError,
+  modelErrors,
   ollamaConfig,
   validateExtraction,
   type LanguageModel,
 } from "./model";
-import { recommend } from "./recommend";
+import { recommend, type Recommendation } from "./recommend";
 import {
   pendingFieldsSchema,
   turnRequestSchema,
   turnResponseSchema,
+  type TurnRequest,
   type TurnResponse,
-} from "./workflow-types";
-export { turnRequestSchema, turnResponseSchema } from "./workflow-types";
-export type { TurnRequest, TurnResponse } from "./workflow-types";
-const GraphState = new StateSchema({
+} from "./contract";
+
+const State = new StateSchema({
   request: turnRequestSchema,
   brief: briefSchema,
   pending: pendingFieldsSchema.default([]),
   extraction: extractionSchema.nullable().default(null),
   response: turnResponseSchema.nullable().default(null),
 });
+type Node = GraphNode<typeof State>;
+type Turn = { request: TurnRequest; brief: Brief; pending: BriefField[] };
+
+/** Every answer carries the canonical brief, its open questions, and whether the model ran. */
+const turn = (
+  { request, brief, pending }: Turn,
+  status: TurnResponse["status"],
+  explanation: string[],
+  recommendation: Recommendation | null = null,
+): TurnResponse => ({
+  status,
+  brief,
+  missing: missingFields(brief),
+  pending,
+  recommendation,
+  explanation,
+  modelStatus: request.mode === "chat" ? "used" : "not_used",
+});
 
 /** Compile once per server module instance. All campaign state is invocation-local. */
-export function createWorkflow(deps: {
+export function createWorkflow({
+  model,
+  loadData,
+}: {
   model: LanguageModel;
   loadData: () => Promise<Dataset>;
 }) {
-  const extract: GraphNode<typeof GraphState> = async (state, config) => {
-    if (state.request.mode !== "chat") return {};
-    const output = await deps.model.extract(
-      state.request.message,
-      state.brief,
-      config.signal,
-    );
-    try {
-      return { extraction: validateExtraction(output, state.request.message) };
-    } catch {
-      throw new ModelError("invalid_output");
+  const extract: Node = async ({ request, brief }, config) => {
+    if (request.mode !== "chat") return {};
+    const output = await model.extract(request.message, brief, config.signal);
+    return { extraction: validateExtraction(output, request.message) };
+  };
+  const merge: Node = ({ brief, pending, extraction }) => {
+    const patch: Record<string, unknown> = {};
+    const open = new Set(pending);
+    for (const [field, change] of Object.entries(extraction?.patch ?? {})) {
+      patch[field] = change?.value;
+      open.delete(field as BriefField);
     }
-  };
-  const merge: GraphNode<typeof GraphState> = (state) => {
-    const patch: Brief = { ...state.extraction?.patch };
-    // A newly unsupported/invalid request must invalidate any previous value.
-    const pending = new Set(state.pending);
-    for (const key of Object.keys(patch)) pending.delete(key as keyof Brief);
-    for (const issue of state.extraction?.issues ?? []) {
-      patch[issue.field] = null;
-      pending.add(issue.field);
+    // A newly unsupported or invalid request must invalidate any previous value.
+    for (const { field } of extraction?.issues ?? []) {
+      patch[field] = null;
+      open.add(field);
     }
+    return { brief: mergeBrief(brief, patch), pending: [...open] };
+  };
+  const clarify: Node = (state) => ({
+    response: turn(
+      state,
+      "clarification",
+      explainClarification(
+        state.extraction?.issues ?? [],
+        state.pending,
+        missingFields(state.brief),
+      ),
+    ),
+  });
+  const calculate: Node = async (state) => {
+    const brief = completeBriefSchema.parse(state.brief);
+    const result = recommend(brief, await loadData());
     return {
-      brief: mergeBrief(state.brief, patch),
-      pending: [...pending],
+      response: turn(
+        state,
+        result.status,
+        explainRecommendation(result),
+        result,
+      ),
     };
   };
-  const clarify: GraphNode<typeof GraphState> = (state) => {
-    const missing = missingFields(state.brief);
-    const issues = state.extraction?.issues ?? [];
-    return {
-      response: {
-        status: "clarification",
-        brief: state.brief,
-        missing,
-        pending: state.pending,
-        recommendation: null,
-        explanation: [
-          ...issues.map(
-            (i) =>
-              `The requested ${i.field} is ${i.reason}. Please provide a supported value or edit the campaign brief.`,
-          ),
-          ...(!issues.length && state.pending.length
-            ? [
-                `Please resolve the earlier question about ${state.pending.join(", ")}. Provide a value, explicitly remove an optional requirement, or edit the brief and recalculate.`,
-              ]
-            : []),
-          ...(missing.length
-            ? [
-                `To recommend a plan, I need your ${missing.map((key) => fieldLabels[key]).join(", ")}.`,
-              ]
-            : []),
-        ],
-        modelStatus: state.request.mode === "chat" ? "used" : "not_used",
-      },
-    };
-  };
-  const calculate: GraphNode<typeof GraphState> = async (state) => {
-    const result = recommend(
-      completeBriefSchema.parse(state.brief),
-      await deps.loadData(),
-    );
-    return {
-      response: {
-        status: result.status,
-        brief: state.brief,
-        missing: [],
-        pending: [],
-        recommendation: result,
-        explanation: explainRecommendation(result),
-        modelStatus: state.request.mode === "chat" ? "used" : "not_used",
-      },
-    };
-  };
-  const graph = new StateGraph(GraphState)
+  const graph = new StateGraph(State)
     .addNode("extract", extract, {
       timeout: ollamaConfig.timeoutMs + 2_000,
       retryPolicy: {
@@ -156,34 +146,32 @@ export function createWorkflow(deps: {
     signal?: AbortSignal,
   ): Promise<TurnResponse> => {
     const request = turnRequestSchema.parse(input);
+    const pending = request.mode === "chat" ? request.pending : [];
+    const deadline = AbortSignal.timeout(85_000);
     try {
       const state = await graph.invoke(
-        {
-          request,
-          brief: request.brief,
-          pending: request.mode === "chat" ? request.pending : [],
-        },
+        { request, brief: request.brief, pending },
         {
           recursionLimit: 12,
-          signal: signal
-            ? AbortSignal.any([signal, AbortSignal.timeout(85_000)])
-            : AbortSignal.timeout(85_000),
+          signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
         },
       );
       return turnResponseSchema.parse(state.response);
     } catch (error) {
-      const code = error instanceof ModelError ? error.code : "internal";
+      const code =
+        error instanceof ModelError
+          ? error.code
+          : deadline.aborted
+            ? "timeout"
+            : "internal";
+      const explanation =
+        code === "internal"
+          ? "The recommendation could not be completed. Check the dataset and try again."
+          : `${modelErrors[code]} Your previous brief is preserved; the new message was not applied. You can edit the brief and calculate without a model.`;
       return {
-        status: "error",
-        brief: request.brief,
-        missing: missingFields(request.brief),
-        pending: request.mode === "chat" ? request.pending : [],
-        recommendation: null,
-        explanation: [
-          code === "internal"
-            ? "The recommendation could not be completed. Check the dataset and try again."
-            : `${error instanceof Error ? error.message : "The model is unavailable."} Your previous brief is preserved; the new message was not applied. You can edit the brief and calculate without a model.`,
-        ],
+        ...turn({ request, brief: request.brief, pending }, "error", [
+          explanation,
+        ]),
         modelStatus: "unavailable",
         errorCode: code,
       };

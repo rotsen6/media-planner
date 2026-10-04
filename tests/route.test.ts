@@ -1,17 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { POST } from "../src/app/api/chat/route";
+import { chatRequest as request } from "./fixtures";
 
-function request(body: string, origin = "http://127.0.0.1:3000") {
-  return new Request("http://localhost:3000/api/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      host: "127.0.0.1:3000",
-      origin,
-    },
-    body,
-  });
-}
 describe("HTTP boundary", () => {
   it("accepts a same-origin browser even if Next normalizes the internal URL", async () => {
     const response = await POST(

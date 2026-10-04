@@ -8,14 +8,13 @@ Requires Node.js 22+ and npm. From the repository root:
 
 ```bash
 npm ci
-cp .env.example .env.local
-npm run import:data -- "/path/to/AI_Engineer_Case_Study.zip"
+mkdir -p data/private && unzip -jo "/path/to/AI_Engineer_Case_Study.zip" "AI Engineer Case Study/*.csv" "AI Engineer Case Study/client_briefs.json" -d data/private
 npm run dev
 ```
 
 Open **http://127.0.0.1:3000**. Choose **Enter details manually** to calculate immediately. For production mode, run `npm run build` followed by `npm start`.
 
-The importer uses `unzip` on macOS/Linux. Alternatively, pass the extracted `AI Engineer Case Study` directory. The four input files live in ignored `data/private/`: `product_catalog.csv`, `campaign_history.csv`, `inventory_forecaster.csv`, and `client_briefs.json`. `DATA_DIR` can point elsewhere. Restart after replacing data.
+The `unzip` step copies the four input files into ignored `data/private/`: `product_catalog.csv`, `campaign_history.csv`, `inventory_forecaster.csv`, and `client_briefs.json`. If the archive is already extracted, set `DATA_DIR` to that folder instead. Both API routes share one cached dataset, so restart after replacing data.
 
 ### Local chat model
 
@@ -33,7 +32,7 @@ The status endpoint should report `modelReady: true`. The service runs locally a
 
 The default [Qwen2.5 14B model](https://ollama.com/library/qwen2.5:14b) downloads about 9 GB. Extraction uses a non-thinking instruction model with schema-constrained output and application validation.
 
-`.env.local` configures `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, and `DATA_DIR`; see [.env.example](.env.example) for defaults. The adapter and status endpoint share one server configuration. No paid API or database is required. A hosted server would need its own reachable model endpoint; it cannot use your laptop's `localhost`.
+An optional `.env.local` can override `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`), `OLLAMA_MODEL` (`qwen2.5:14b`), and `DATA_DIR` (`data/private`). The adapter and status endpoint share one server configuration. No paid API or database is required. A hosted server would need its own reachable model endpoint; it cannot use your laptop's `localhost`.
 
 ## Architecture
 
@@ -61,15 +60,16 @@ flowchart TD
 
 The graph has four nodes: extract, merge, clarify, and calculate. A successful chat needs one model call for extraction; the calculator validates its own result and explanation text comes directly from verified evidence. Clarification ends the request; the next message supplies the current brief and unresolved fields. The server recalculates every recommendation from its evidence. No campaign state lives in a server global and no graph checkpointer is needed.
 
-| Code                                                              | Responsibility                                                      |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `src/lib/data.ts`                                                 | Parse CSVs, validate joins, aggregate history, fingerprint evidence |
-| `src/lib/brief.ts`, `workflow-types.ts`                           | Campaign fields and request/response contracts                      |
-| `src/lib/recommend.ts`                                            | Feasibility, ranking, two-product allocation, result invariants     |
-| `src/lib/model.ts`, `workflow.ts`, `evidence.ts`                  | Model transport, routing, and authoritative explanation text        |
-| `src/lib/conversations.ts`, `src/components/use-conversations.ts` | Chat state, persistence, and request cancellation                   |
-| `src/components/workspace.tsx`, `plan-panel.tsx`                  | Navigation, conversation, editable brief, and results               |
-| `src/app/api/`                                                    | Chat requests and local setup status                                |
+| Code                                                              | Responsibility                                                       |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `src/lib/brief.ts`, `contract.ts`                                 | Campaign fields; HTTP request/response schemas and body size limits  |
+| `src/lib/data.ts`                                                 | Parse CSVs, validate joins, aggregate history, fingerprint and cache |
+| `src/lib/recommend.ts`                                            | Feasibility, ranking, two-product allocation, feasibility invariants |
+| `src/lib/model.ts`, `workflow.ts`                                 | Ollama adapter, quote validation, and LangGraph routing              |
+| `src/lib/evidence.ts`                                             | Number formatting and all user-facing explanation text               |
+| `src/lib/conversations.ts`, `src/components/use-conversations.ts` | Chat state, persistence, and request cancellation                    |
+| `src/components/workspace.tsx`, `plan-panel.tsx`                  | Navigation, conversation, editable brief, and results                |
+| `src/app/api/`                                                    | Chat requests with bounded bodies, and local setup status            |
 
 ## Decision rules
 
@@ -91,17 +91,16 @@ Each chat saves its messages, draft, brief, pending questions, and result in thi
 
 Storage is local to this browser and origin, with no account sync or concurrent-tab merging. Clearing browser data removes chats; storage failures show a notice. The transcript is not sent as accumulated model history: each request sends the latest message, canonical brief, and unresolved fields.
 
-The model returns each changed value and issue with its source quote. The adapter derives this response schema from the campaign fields and normalizes it into the workflow contract. Quotes and structured output do not prove semantic correctness. Extraction failure preserves the prior brief. Explanations use deterministic text. The editable brief lets the strategist correct interpretation errors. Model calls allow 45 seconds for cold starts, extraction has at most two attempts, and the workflow has an 85-second limit. Input/output sizes are bounded.
+The model returns each changed value and issue with its source quote. One extraction schema, derived from the campaign fields, is both the Ollama response format and the workflow's validation; every quote must appear in the message. Quotes and structured output do not prove semantic correctness. Extraction failure preserves the prior brief. Explanations use deterministic text. The editable brief lets the strategist correct interpretation errors. Model calls allow 45 seconds for cold starts, extraction has at most two attempts, and the workflow has an 85-second limit, reported as a model timeout. Input/output sizes are bounded.
 
 ## Verify
 
 ```bash
 npm run check       # TypeScript, unit/integration tests, production build
-npm run test:http   # Running app + imported assessment data; no model needed
-npm run test:live   # Running app + data + real Ollama model
+npm run test:live   # Imported data + real Ollama model; no running app needed
 ```
 
-`APP_URL` overrides the HTTP checks' default `http://127.0.0.1:3000`. Nine dataset-specific tests skip when private inputs are absent. Model doubles test workflow behavior; `test:live` checks the seven original prompts plus an unsupported geography and its correction, reporting latency for each. Tests cover calculations, workflow failures, quoted model output, saved chats, and debounced writes.
+Nine dataset-specific tests skip when private inputs are absent, and the live-model tests run only through `test:live`. Model doubles test workflow behavior; `test:live` sends the seven supplied briefs plus an unsupported geography and its correction through the real model and chat route. Tests cover calculations, workflow failures, quoted model output, saved chats, and debounced writes.
 
 ## References and delivery
 

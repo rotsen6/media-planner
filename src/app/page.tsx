@@ -1,13 +1,9 @@
-import { loadExampleBriefs } from "@/lib/data";
 import Workspace from "@/components/workspace";
+import { loadExampleBriefs } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
+
 export default async function Page() {
-  let examples: string[] = [];
-  try {
-    examples = await loadExampleBriefs();
-  } catch {
-    /* Setup instructions are shown in the workspace. */
-  }
-  return <Workspace examples={examples} />;
+  // Without examples the workspace still works and shows setup instructions.
+  return <Workspace examples={await loadExampleBriefs().catch(() => [])} />;
 }

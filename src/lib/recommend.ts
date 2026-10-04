@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { completeBriefSchema, type CompleteBrief } from "./brief";
-import type { Benchmark, Dataset, Inventory, Product } from "./data";
+import { completeBriefSchema, type CompleteBrief, type Kpi } from "./brief";
+import type { Dataset } from "./data";
 
-export const POLICY_VERSION = "ceiling-confidence-tie-single-first-v1";
+const POLICY_VERSION = "ceiling-confidence-tie-single-first-v1";
 const amount = z.number().finite().nonnegative();
 const rate = amount.max(1);
-export const legSchema = z.object({
+const rates = { ctr: rate, inViewRate: rate };
+const legSchema = z.object({
   productId: z.string(),
   name: z.string(),
   cpm: amount.positive(),
@@ -13,30 +14,27 @@ export const legSchema = z.object({
   spend: amount,
   availableImpressions: amount,
   confidence: rate,
-  ctr: rate,
-  inViewRate: rate,
+  ...rates,
   historyImpressions: amount.positive(),
   historyClicks: amount,
   historyViewableImpressions: amount,
   historyLineItems: amount.int().positive(),
 });
-export const planSchema = z.object({
+const planSchema = z.object({
   id: z.string(),
   name: z.string(),
   legs: z.array(legSchema).min(1).max(2),
   impressions: amount.positive(),
   spend: amount,
   unspentBudget: amount,
-  ctr: rate,
-  inViewRate: rate,
+  ...rates,
   lowestConfidence: rate,
 });
-export const evaluatedSchema = z.object({
+const evaluatedSchema = z.object({
   productId: z.string(),
   name: z.string(),
   cpm: amount.positive(),
-  ctr: rate,
-  inViewRate: rate,
+  ...rates,
   confidence: rate,
   budgetImpressions: amount,
   availableImpressions: amount,
@@ -64,78 +62,131 @@ export const recommendationSchema = z.object({
 export type Plan = z.infer<typeof planSchema>;
 export type Recommendation = z.infer<typeof recommendationSchema>;
 export type EvaluatedProduct = z.infer<typeof evaluatedSchema>;
-type Evidence = {
-  product: Product;
-  benchmark: Benchmark;
-  inventory: Inventory;
-};
+type Facts = ReturnType<typeof facts>;
+type RankKey<T> = (item: T) => [kpi: number, tieBreak: number, id: string];
 
 // Only absorb floating-point noise, never round impressions before checking a goal.
-function tolerance(a: number, b: number) {
-  return Number.EPSILON * 32 * Math.max(1, Math.abs(a), Math.abs(b));
+const tolerance = (a: number, b: number) =>
+  Number.EPSILON * 32 * Math.max(1, Math.abs(a), Math.abs(b));
+const near = (a: number, b: number) => Math.abs(a - b) <= tolerance(a, b);
+const atLeast = (a: number, b: number) => a >= b - tolerance(a, b);
+const atMost = (a: number, b: number) => a <= b + tolerance(a, b);
+
+/** Higher KPI first (float noise is a tie), then the higher tie-break, then the stable ID. */
+function rank<T>(items: T[], key: RankKey<T>): T[] {
+  return items.sort((a, b) => {
+    const [kpiA, tieA, idA] = key(a);
+    const [kpiB, tieB, idB] = key(b);
+    return (
+      (near(kpiA, kpiB) ? 0 : kpiB - kpiA) ||
+      tieB - tieA ||
+      idA.localeCompare(idB)
+    );
+  });
 }
-function atLeast(a: number, b: number) {
-  return a >= b - tolerance(a, b);
+
+/** One product's catalog row, vertical benchmark, and vertical/geo inventory. */
+function facts(data: Dataset, brief: CompleteBrief, productId: string) {
+  const { vertical, geo } = brief;
+  const product = data.products.find((p) => p.product_id === productId);
+  const history = data.benchmarks.find(
+    (b) => b.productId === productId && b.vertical === vertical,
+  );
+  const stock = data.inventory.find(
+    (i) =>
+      i.product_id === productId && i.vertical === vertical && i.geo === geo,
+  );
+  if (!product || !history || !stock)
+    throw new Error("Incomplete evidence for campaign brief");
+  return {
+    productId,
+    name: product.product_name,
+    cpm: product.cpm,
+    ctr: history.ctr,
+    inViewRate: history.inViewRate,
+    confidence: stock.inventory_risk,
+    availableImpressions: stock.available_imps,
+    historyImpressions: history.impressions,
+    historyClicks: history.clicks,
+    historyViewableImpressions: history.viewableImpressions,
+    historyLineItems: history.lineItems,
+  };
 }
-function atMost(a: number, b: number) {
-  return a <= b + tolerance(a, b);
+
+/** One product alone: the budget buys impressions at its CPM; raw inventory caps delivery. */
+function evaluate(brief: CompleteBrief, product: Facts): EvaluatedProduct {
+  const goal = brief.impressionGoal ?? 0;
+  const budgetImpressions = (brief.budget / product.cpm) * 1000;
+  const available = product.availableImpressions;
+  const deliverableImpressions = Math.min(budgetImpressions, available);
+  const budgetShort = !atLeast(budgetImpressions, goal);
+  const inventoryShort = !atLeast(available, goal);
+  const reason =
+    available === 0
+      ? "no_inventory"
+      : budgetShort && inventoryShort
+        ? "budget_and_inventory_goal"
+        : budgetShort
+          ? "budget_goal"
+          : inventoryShort
+            ? "inventory_goal"
+            : "eligible";
+  return {
+    ...product,
+    budgetImpressions,
+    deliverableImpressions,
+    spend: (deliverableImpressions * product.cpm) / 1000,
+    eligible: reason === "eligible",
+    reason,
+  };
 }
 
 function makePlan(
   brief: CompleteBrief,
-  allocations: { source: Evidence; impressions: number }[],
+  ...allocations: [Facts, number][]
 ): Plan {
-  const legs = allocations.map(
-    ({ source: { product: p, benchmark: b, inventory: i }, impressions }) => ({
-      productId: p.product_id,
-      name: p.product_name,
-      cpm: p.cpm,
-      impressions,
-      spend: (impressions * p.cpm) / 1000,
-      availableImpressions: i.available_imps,
-      confidence: i.inventory_risk,
-      ctr: b.ctr,
-      inViewRate: b.inViewRate,
-      historyImpressions: b.impressions,
-      historyClicks: b.clicks,
-      historyViewableImpressions: b.viewableImpressions,
-      historyLineItems: b.lineItems,
-    }),
-  );
-  const impressions = legs.reduce((sum, leg) => sum + leg.impressions, 0);
-  const spend = legs.reduce((sum, leg) => sum + leg.spend, 0);
-  return planSchema.parse({
-    id: legs.map((l) => l.productId).join("+"),
-    name: legs.map((l) => l.name).join(" + "),
+  const legs = allocations.map(([product, impressions]) => ({
+    ...product,
+    impressions,
+    spend: (impressions * product.cpm) / 1000,
+  }));
+  const sum = (value: (leg: (typeof legs)[number]) => number) =>
+    legs.reduce((total, leg) => total + value(leg), 0);
+  const impressions = sum((leg) => leg.impressions);
+  const spend = sum((leg) => leg.spend);
+  // A single leg keeps its benchmark exactly; a pair blends benchmarks by impressions.
+  const blend = (kpi: Kpi) =>
+    legs.length === 1
+      ? legs[0][kpi]
+      : sum((leg) => leg.impressions * leg[kpi]) / impressions;
+  return {
+    id: legs.map((leg) => leg.productId).join("+"),
+    name: legs.map((leg) => leg.name).join(" + "),
     legs,
     impressions,
     spend,
     unspentBudget: Math.max(0, brief.budget - spend),
-    ctr:
-      legs.length === 1
-        ? legs[0].ctr
-        : legs.reduce((sum, l) => sum + l.impressions * l.ctr, 0) / impressions,
-    inViewRate:
-      legs.length === 1
-        ? legs[0].inViewRate
-        : legs.reduce((sum, l) => sum + l.impressions * l.inViewRate, 0) /
-          impressions,
-    lowestConfidence: Math.min(...legs.map((l) => l.confidence)),
-  });
+    ctr: blend("ctr"),
+    inViewRate: blend("inViewRate"),
+    lowestConfidence: Math.min(...legs.map((leg) => leg.confidence)),
+  };
 }
 
 /**
- * For each pair, optimize the impression-weighted KPI over a bounded polygon.
- * A linear-fractional objective with a positive denominator reaches an optimum
- * at a vertex. Enumerating six constraint lines avoids an opaque solver package.
- * Inventory is additive across products for impressions (not deduplicated reach).
+ * Best allocation across two products. The impression-weighted KPI is
+ * linear-fractional, so its optimum over the feasible polygon is a vertex:
+ * try every intersection of two of the six constraint lines a·x + b·y = c.
+ * Inventory adds across products as impressions, not deduplicated reach.
  */
-function bestPair(brief: CompleteBrief, a: Evidence, b: Evidence): Plan | null {
-  const goal = brief.impressionGoal!;
-  const costA = a.product.cpm / 1000,
-    costB = b.product.cpm / 1000;
-  const maxA = a.inventory.available_imps,
-    maxB = b.inventory.available_imps;
+function bestPair(
+  brief: CompleteBrief,
+  a: Facts,
+  b: Facts,
+  key: RankKey<Plan>,
+): Plan | undefined {
+  const goal = brief.impressionGoal ?? 0;
+  const [costA, costB] = [a.cpm / 1000, b.cpm / 1000];
+  const [maxA, maxB] = [a.availableImpressions, b.availableImpressions];
   const lines = [
     [1, 0, 0],
     [0, 1, 0],
@@ -144,130 +195,52 @@ function bestPair(brief: CompleteBrief, a: Evidence, b: Evidence): Plan | null {
     [costA, costB, brief.budget],
     [1, 1, goal],
   ];
-  let best: Plan | null = null;
-  for (let i = 0; i < lines.length; i++) {
-    for (let j = i + 1; j < lines.length; j++) {
-      const [aa, ab, ac] = lines[i],
-        [ba, bb, bc] = lines[j];
-      const determinant = aa * bb - ba * ab;
-      if (Math.abs(determinant) < 1e-14) continue;
-      const x = (ac * bb - bc * ab) / determinant;
-      const y = (aa * bc - ba * ac) / determinant;
-      if (
-        x <= 0 ||
-        y <= 0 ||
-        !atMost(x, maxA) ||
-        !atMost(y, maxB) ||
-        !atMost(x * costA + y * costB, brief.budget) ||
-        !atLeast(x + y, goal)
-      )
-        continue;
-      const candidate = makePlan(brief, [
-        { source: a, impressions: x },
-        { source: b, impressions: y },
-      ]);
-      if (!best || comparePlans(candidate, best, brief.kpi, true) < 0)
-        best = candidate;
-    }
-  }
-  return best;
-}
-
-function comparePlans(
-  a: Plan,
-  b: Plan,
-  kpi: CompleteBrief["kpi"],
-  bundle: boolean,
-) {
-  const difference = b[kpi] - a[kpi];
-  const rateOrder =
-    Math.abs(difference) > tolerance(a[kpi], b[kpi]) ? difference : 0;
-  return (
-    rateOrder ||
-    (bundle ? b.spend - a.spend : b.lowestConfidence - a.lowestConfidence) ||
-    a.id.localeCompare(b.id)
+  const vertices = lines.flatMap(([a1, b1, c1], i) =>
+    lines.slice(i + 1).flatMap(([a2, b2, c2]) => {
+      const determinant = a1 * b2 - a2 * b1;
+      if (Math.abs(determinant) < 1e-14) return [];
+      const x = (c1 * b2 - c2 * b1) / determinant;
+      const y = (a1 * c2 - a2 * c1) / determinant;
+      const feasible =
+        x > 0 &&
+        y > 0 &&
+        atMost(x, maxA) &&
+        atMost(y, maxB) &&
+        atMost(x * costA + y * costB, brief.budget) &&
+        atLeast(x + y, goal);
+      return feasible ? [makePlan(brief, [a, x], [b, y])] : [];
+    }),
   );
+  return rank(vertices, key)[0];
 }
 
 /** The calculator has no model, I/O, session state, or side effects. */
 export function recommend(input: CompleteBrief, data: Dataset): Recommendation {
   const brief = completeBriefSchema.parse(input);
-  const sources: Evidence[] = data.products.map((product) => {
-    const benchmark = data.benchmarks.find(
-      (b) =>
-        b.productId === product.product_id && b.vertical === brief.vertical,
-    );
-    const inventory = data.inventory.find(
-      (i) =>
-        i.product_id === product.product_id &&
-        i.vertical === brief.vertical &&
-        i.geo === brief.geo,
-    );
-    if (!benchmark || !inventory)
-      throw new Error("Incomplete evidence for campaign brief");
-    return { product, benchmark, inventory };
-  });
-  const singles: Plan[] = [];
-  const evaluatedProducts = sources
-    .map((source): EvaluatedProduct => {
-      const { product: p, benchmark: b, inventory: i } = source;
-      const budgetImpressions = (brief.budget / p.cpm) * 1000;
-      const deliverableImpressions = Math.min(
-        budgetImpressions,
-        i.available_imps,
-      );
-      const budgetShort =
-        brief.impressionGoal != null &&
-        !atLeast(budgetImpressions, brief.impressionGoal);
-      const inventoryShort =
-        brief.impressionGoal != null &&
-        !atLeast(i.available_imps, brief.impressionGoal);
-      const reason =
-        i.available_imps === 0
-          ? "no_inventory"
-          : budgetShort && inventoryShort
-            ? "budget_and_inventory_goal"
-            : budgetShort
-              ? "budget_goal"
-              : inventoryShort
-                ? "inventory_goal"
-                : "eligible";
-      if (reason === "eligible")
-        singles.push(
-          makePlan(brief, [{ source, impressions: deliverableImpressions }]),
-        );
-      return {
-        productId: p.product_id,
-        name: p.product_name,
-        cpm: p.cpm,
-        ctr: b.ctr,
-        inViewRate: b.inViewRate,
-        confidence: i.inventory_risk,
-        budgetImpressions,
-        availableImpressions: i.available_imps,
-        deliverableImpressions,
-        spend: (deliverableImpressions * p.cpm) / 1000,
-        eligible: reason === "eligible",
-        reason,
-      };
-    })
-    .sort(
-      (a, b) =>
-        b[brief.kpi] - a[brief.kpi] ||
-        b.confidence - a.confidence ||
-        a.productId.localeCompare(b.productId),
-    );
-  const bundleSearchUsed = singles.length === 0 && brief.impressionGoal != null;
-  const candidates = [...singles];
-  if (bundleSearchUsed) {
-    for (let i = 0; i < sources.length; i++) {
-      for (let j = i + 1; j < sources.length; j++) {
-        const plan = bestPair(brief, sources[i], sources[j]);
-        if (plan) candidates.push(plan);
-      }
-    }
-  }
-  candidates.sort((a, b) => comparePlans(a, b, brief.kpi, bundleSearchUsed));
+  const products = data.products.map((p) => facts(data, brief, p.product_id));
+  const evaluated = products.map((product) => evaluate(brief, product));
+  const singles = products.flatMap((product, i) =>
+    evaluated[i].eligible
+      ? [makePlan(brief, [product, evaluated[i].deliverableImpressions])]
+      : [],
+  );
+  // Pairs are considered only when no single product meets a supplied goal.
+  const bundleSearchUsed = !singles.length && !!brief.impressionGoal;
+  const key: RankKey<Plan> = (plan) => [
+    plan[brief.kpi],
+    bundleSearchUsed ? plan.spend : plan.lowestConfidence,
+    plan.id,
+  ];
+  const candidates = rank(
+    bundleSearchUsed
+      ? products.flatMap((a, i) =>
+          products
+            .slice(i + 1)
+            .flatMap((b) => bestPair(brief, a, b, key) ?? []),
+        )
+      : singles,
+    key,
+  );
   const result = recommendationSchema.parse({
     status: candidates.length ? "ready" : "infeasible",
     brief,
@@ -275,89 +248,41 @@ export function recommend(input: CompleteBrief, data: Dataset): Recommendation {
     policyVersion: POLICY_VERSION,
     recommended: candidates[0] ?? null,
     alternatives: candidates.slice(1, 3),
-    evaluatedProducts,
+    evaluatedProducts: rank(evaluated, (p) => [
+      p[brief.kpi],
+      p.confidence,
+      p.productId,
+    ]),
     bundleSearchUsed,
   });
   validateRecommendation(result, data);
   return result;
 }
 
-/** Independent invariants catch invalid allocations before any explanation is requested. */
-export function validateRecommendation(
-  result: Recommendation,
-  data: Dataset,
-): void {
-  recommendationSchema.parse(result);
-  if (result.datasetVersion !== data.version)
-    throw new Error("Evidence version mismatch");
-  if ((result.status === "ready") !== (result.recommended !== null))
+/** Feasibility invariants, recomputed from the catalog rather than trusted from the plan. */
+export function validateRecommendation(result: Recommendation, data: Dataset) {
+  const { brief, recommended, alternatives } = result;
+  if ((result.status === "ready") !== !!recommended)
     throw new Error("Invalid result status");
-  for (const plan of [result.recommended, ...result.alternatives]) {
-    if (!plan) continue;
-    let spend = 0,
-      impressions = 0,
-      clicks = 0,
-      viewable = 0;
-    if (
-      new Set(plan.legs.map((leg) => leg.productId)).size !== plan.legs.length
-    )
-      throw new Error("Duplicate allocation");
+  for (const plan of [recommended ?? [], alternatives].flat()) {
+    let spend = 0;
     for (const leg of plan.legs) {
-      const stock = data.inventory.find(
-        (i) =>
-          i.product_id === leg.productId &&
-          i.vertical === result.brief.vertical &&
-          i.geo === result.brief.geo,
-      );
-      const product = data.products.find((p) => p.product_id === leg.productId);
-      const benchmark = data.benchmarks.find(
-        (b) =>
-          b.productId === leg.productId && b.vertical === result.brief.vertical,
-      );
-      if (
-        !stock ||
-        !product ||
-        !benchmark ||
-        !atMost(leg.impressions, stock.available_imps)
-      )
-        throw new Error("Invalid inventory allocation");
-      if (
-        leg.cpm !== product.cpm ||
-        leg.name !== product.product_name ||
-        leg.confidence !== stock.inventory_risk ||
-        leg.availableImpressions !== stock.available_imps ||
-        leg.ctr !== benchmark.ctr ||
-        leg.inViewRate !== benchmark.inViewRate ||
-        leg.historyImpressions !== benchmark.impressions ||
-        leg.historyClicks !== benchmark.clicks ||
-        leg.historyViewableImpressions !== benchmark.viewableImpressions ||
-        leg.historyLineItems !== benchmark.lineItems
-      )
-        throw new Error("Evidence was changed");
-      const cost = (leg.impressions * product.cpm) / 1000;
-      if (Math.abs(leg.spend - cost) > tolerance(leg.spend, cost))
-        throw new Error("Invalid leg cost");
-      spend += cost;
-      impressions += leg.impressions;
-      clicks += leg.impressions * benchmark.ctr;
-      viewable += leg.impressions * benchmark.inViewRate;
+      const product = facts(data, brief, leg.productId);
+      if (!atMost(leg.impressions, product.availableImpressions))
+        throw new Error("Allocation exceeds inventory");
+      spend += (leg.impressions * product.cpm) / 1000;
     }
-    const expected: [number, number][] = [
-      [plan.spend, spend],
-      [plan.impressions, impressions],
-      [plan.ctr, clicks / impressions],
-      [plan.inViewRate, viewable / impressions],
-      [plan.unspentBudget, Math.max(0, result.brief.budget - spend)],
-    ];
+    const impressions = plan.legs.reduce(
+      (total, leg) => total + leg.impressions,
+      0,
+    );
     if (
-      expected.some(
-        ([actual, value]) =>
-          Math.abs(actual - value) > tolerance(actual, value),
-      ) ||
-      !atMost(spend, result.brief.budget) ||
-      !atLeast(impressions, result.brief.impressionGoal ?? 0)
-    ) {
+      new Set(plan.legs.map((leg) => leg.productId)).size < plan.legs.length ||
+      !near(plan.spend, spend) ||
+      !near(plan.impressions, impressions) ||
+      !atMost(spend, brief.budget) ||
+      !atLeast(impressions, brief.impressionGoal ?? 0)
+    )
       throw new Error("Plan violates campaign constraints or arithmetic");
-    }
   }
 }

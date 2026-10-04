@@ -13,9 +13,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test && npm run build",
-    "test:live": "node scripts/check-live-model.mjs",
-    "import:data": "node scripts/import-data.mjs",
-    "test:http": "node scripts/check-http.mjs"
+    "test:live": "LIVE=1 vitest run tests/live.test.ts --reporter=verbose"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.4.18",

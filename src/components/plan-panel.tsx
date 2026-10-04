@@ -1,44 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState, type InputHTMLAttributes } from "react";
 import { GEOS, REQUIRED_FIELDS, VERTICALS } from "@/lib/brief";
-import { kpiLabel, number, percent, productReason } from "@/lib/evidence";
 import type { Conversation, FormBrief } from "@/lib/conversations";
+import {
+  currency,
+  kpiLabel,
+  number,
+  percent,
+  productReason,
+} from "@/lib/evidence";
 import type { Plan, Recommendation } from "@/lib/recommend";
 import { Icon } from "./icons";
 
-export const currency = (value: number) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
-  }).format(value);
-const labels: Record<keyof FormBrief, string> = {
-  clientName: "Campaign name",
-  vertical: "Vertical",
-  geo: "Geography",
-  kpi: "Primary KPI",
-  budget: "Budget ceiling",
-  impressionGoal: "Minimum impressions",
-};
-function displayValue(field: keyof FormBrief, value: string) {
-  if (field === "kpi") return kpiLabel(value);
-  if (field === "budget") return currency(Number(value));
-  if (field === "impressionGoal") return number(Number(value));
-  return value;
-}
-
-function BriefForm({
-  chat,
-  edit,
-  submit,
-  done,
-}: {
+type Field = keyof FormBrief;
+type Props = {
   chat: Conversation;
-  edit: (field: keyof FormBrief, value: string) => void;
+  edit: (field: Field, value: string) => void;
   submit: () => void;
-  done: () => void;
-}) {
+};
+const same = (values: readonly string[]) => values.map((v) => [v, v]);
+/** One table drives the form (in this order) and the summary labels. */
+const FIELDS: Record<
+  Field,
+  {
+    label: string;
+    hint?: string;
+    placeholder: string;
+    options?: string[][];
+    input?: InputHTMLAttributes<HTMLInputElement>;
+  }
+> = {
+  clientName: {
+    label: "Campaign name",
+    hint: "Optional",
+    placeholder: "e.g. StellarBank",
+    input: { maxLength: 120 },
+  },
+  vertical: {
+    label: "Vertical",
+    placeholder: "Choose a vertical",
+    options: same(VERTICALS),
+  },
+  geo: {
+    label: "Geography",
+    placeholder: "Choose a geography",
+    options: same(GEOS),
+  },
+  kpi: {
+    label: "Primary KPI",
+    placeholder: "Choose a KPI",
+    options: [
+      ["ctr", "Click-through rate"],
+      ["inViewRate", "In-view rate"],
+    ],
+  },
+  budget: {
+    label: "Budget ceiling",
+    hint: "USD",
+    placeholder: "20,000",
+    input: {
+      type: "number",
+      inputMode: "decimal",
+      min: "0.01",
+      max: "1000000000",
+      step: "any",
+      required: true,
+    },
+  },
+  impressionGoal: {
+    label: "Minimum impressions",
+    hint: "Optional",
+    placeholder: "No minimum",
+    input: {
+      type: "number",
+      inputMode: "numeric",
+      min: "1",
+      max: "1000000000000",
+      step: "1",
+    },
+  },
+};
+const display = (field: Field, value: string) =>
+  field === "kpi"
+    ? kpiLabel(value)
+    : field === "budget"
+      ? currency(Number(value))
+      : field === "impressionGoal"
+        ? number(Number(value))
+        : value;
+
+function BriefForm({ chat, edit, submit, done }: Props & { done: () => void }) {
   return (
     <form
       className="brief-form"
@@ -51,80 +103,40 @@ function BriefForm({
       <p className="muted small">
         Four details are needed to calculate a plan.
       </p>
-      <label htmlFor="brief-name">
-        Campaign name <span>Optional</span>
-      </label>
-      <input
-        id="brief-name"
-        value={chat.form.clientName}
-        maxLength={120}
-        placeholder="e.g. StellarBank"
-        onChange={(event) => edit("clientName", event.target.value)}
-      />
-      <label htmlFor="brief-vertical">Vertical</label>
-      <select
-        id="brief-vertical"
-        required
-        value={chat.form.vertical}
-        onChange={(event) => edit("vertical", event.target.value)}
-      >
-        <option value="">Choose a vertical</option>
-        {VERTICALS.map((v) => (
-          <option key={v}>{v}</option>
-        ))}
-      </select>
-      <label htmlFor="brief-geo">Geography</label>
-      <select
-        id="brief-geo"
-        required
-        value={chat.form.geo}
-        onChange={(event) => edit("geo", event.target.value)}
-      >
-        <option value="">Choose a geography</option>
-        {GEOS.map((v) => (
-          <option key={v}>{v}</option>
-        ))}
-      </select>
-      <label htmlFor="brief-kpi">Primary KPI</label>
-      <select
-        id="brief-kpi"
-        required
-        value={chat.form.kpi}
-        onChange={(event) => edit("kpi", event.target.value)}
-      >
-        <option value="">Choose a KPI</option>
-        <option value="ctr">Click-through rate</option>
-        <option value="inViewRate">In-view rate</option>
-      </select>
-      <label htmlFor="brief-budget">
-        Budget ceiling <span>USD</span>
-      </label>
-      <input
-        id="brief-budget"
-        type="number"
-        inputMode="decimal"
-        min="0.01"
-        max="1000000000"
-        step="any"
-        required
-        placeholder="20,000"
-        value={chat.form.budget}
-        onChange={(event) => edit("budget", event.target.value)}
-      />
-      <label htmlFor="brief-goal">
-        Minimum impressions <span>Optional</span>
-      </label>
-      <input
-        id="brief-goal"
-        type="number"
-        inputMode="numeric"
-        min="1"
-        max="1000000000000"
-        step="1"
-        placeholder="No minimum"
-        value={chat.form.impressionGoal}
-        onChange={(event) => edit("impressionGoal", event.target.value)}
-      />
+      {Object.entries(FIELDS).map(
+        ([key, { label, hint, options, ...rest }]) => {
+          const field = key as Field;
+          const props = {
+            id: `brief-${field}`,
+            value: chat.form[field],
+            onChange: (event: { target: { value: string } }) =>
+              edit(field, event.target.value),
+          };
+          return (
+            <Fragment key={field}>
+              <label htmlFor={props.id}>
+                {label} {hint && <span>{hint}</span>}
+              </label>
+              {options ? (
+                <select {...props} required>
+                  <option value="">{rest.placeholder}</option>
+                  {options.map(([value, text]) => (
+                    <option key={value} value={value}>
+                      {text}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  {...props}
+                  {...rest.input}
+                  placeholder={rest.placeholder}
+                />
+              )}
+            </Fragment>
+          );
+        },
+      )}
       <button
         className="primary-button calculate"
         type="submit"
@@ -179,6 +191,7 @@ function Confidence({ plan }: { plan: Plan }) {
 }
 
 function Evidence({ result }: { result: Recommendation }) {
+  const { kpi } = result.brief;
   return (
     <details className="evidence">
       <summary>
@@ -220,8 +233,7 @@ function Evidence({ result }: { result: Recommendation }) {
               <article className="alternative" key={plan.id}>
                 <h4>{plan.name}</h4>
                 <p>
-                  {percent(plan[result.brief.kpi])} historical{" "}
-                  {kpiLabel(result.brief.kpi)}
+                  {percent(plan[kpi])} historical {kpiLabel(kpi)}
                 </p>
                 <p className="muted small">
                   {currency(plan.spend)} · {number(plan.impressions)}{" "}
@@ -244,9 +256,8 @@ function Evidence({ result }: { result: Recommendation }) {
               </div>
               <p className="small">{productReason(product)}</p>
               <p className="muted micro">
-                {percent(product[result.brief.kpi])} historical{" "}
-                {kpiLabel(result.brief.kpi)} · {percent(product.confidence)}{" "}
-                confidence
+                {percent(product[kpi])} historical {kpiLabel(kpi)} ·{" "}
+                {percent(product.confidence)} confidence
               </p>
               <p className="muted micro">
                 {number(product.deliverableImpressions)} impressions ·{" "}
@@ -284,26 +295,18 @@ function Evidence({ result }: { result: Recommendation }) {
   );
 }
 
-export function PlanPanel({
-  chat,
-  edit,
-  submit,
-  close,
-}: {
-  chat: Conversation;
-  edit: (field: keyof FormBrief, value: string) => void;
-  submit: () => void;
-  close: () => void;
-}) {
+export function PlanPanel({ close, ...props }: Props & { close: () => void }) {
+  const { chat, submit } = props;
   const [editing, setEditing] = useState(
     !Object.values(chat.form).some(Boolean),
   );
   const complete = REQUIRED_FIELDS.every((key) => chat.form[key].trim());
   const result = chat.result?.recommendation;
   const plan = result?.recommended;
-  const known = (
-    Object.entries(chat.form) as [keyof FormBrief, string][]
-  ).filter(([, value]) => value.trim());
+  const known = (Object.entries(chat.form) as [Field, string][]).filter(
+    ([, value]) => value.trim(),
+  );
+  const pair = plan && plan.legs.length > 1;
   return (
     <aside className="plan-pane" aria-labelledby="plan-heading">
       <div className="panel-heading">
@@ -327,9 +330,7 @@ export function PlanPanel({
         )}
         {editing ? (
           <BriefForm
-            chat={chat}
-            edit={edit}
-            submit={submit}
+            {...props}
             done={() => {
               setEditing(false);
               requestAnimationFrame(() =>
@@ -355,8 +356,8 @@ export function PlanPanel({
                     .filter(([key]) => key !== "clientName")
                     .map(([key, value]) => (
                       <div key={key}>
-                        <dt>{labels[key]}</dt>
-                        <dd>{displayValue(key, value)}</dd>
+                        <dt>{FIELDS[key].label}</dt>
+                        <dd>{display(key, value)}</dd>
                       </div>
                     ))}
                 </dl>
@@ -374,10 +375,7 @@ export function PlanPanel({
                 <button
                   className="secondary-button"
                   disabled={!!chat.request}
-                  onClick={() => {
-                    if (complete) submit();
-                    else setEditing(true);
-                  }}
+                  onClick={() => (complete ? submit() : setEditing(true))}
                 >
                   {complete ? "Calculate plan" : "Complete brief"}
                   <Icon name="chevron" />
@@ -390,15 +388,12 @@ export function PlanPanel({
                 aria-label="Recommended plan"
               >
                 <p className="eyebrow">
-                  {plan.legs.length > 1
-                    ? "Two-product plan"
-                    : "Recommended product"}
+                  {pair ? "Two-product plan" : "Recommended product"}
                 </p>
                 <h3 className="plan-name">{plan.name}</h3>
                 <p className="muted small">
-                  Highest-ranked feasible{" "}
-                  {plan.legs.length > 1 ? "bundle" : "single product"} for your{" "}
-                  {kpiLabel(result.brief.kpi)} objective.
+                  Highest-ranked feasible {pair ? "bundle" : "single product"}{" "}
+                  for your {kpiLabel(result.brief.kpi)} objective.
                 </p>
                 <PlanMetrics plan={plan} kpi={result.brief.kpi} />
                 <p className="budget-note">
@@ -412,7 +407,7 @@ export function PlanPanel({
                     met
                   </p>
                 )}
-                {plan.legs.length > 1 && (
+                {pair && (
                   <p className="small muted">
                     No single product meets your impression goal. This pair
                     maximizes the impression-weighted KPI within your limits.

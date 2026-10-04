@@ -6,13 +6,12 @@ import {
   historyChats,
   newConversation,
   restoreWorkspace,
-  serializeWorkspace,
   workspaceReducer,
   type WorkspaceAction,
   type WorkspaceState,
 } from "../src/lib/conversations";
 import { recommend } from "../src/lib/recommend";
-import type { TurnResponse } from "../src/lib/workflow-types";
+import type { TurnResponse } from "../src/lib/contract";
 import { syntheticData } from "./fixtures";
 
 const brief = {
@@ -55,6 +54,23 @@ const resolve: WorkspaceAction = {
 };
 const first = (state: WorkspaceState) =>
   state.chats.find((chat) => chat.id === "first")!;
+const draft = (value: string): WorkspaceAction => ({
+  type: "draft",
+  id: "first",
+  value,
+  now: 4,
+});
+const newChat = (id: string): WorkspaceAction => ({
+  type: "new",
+  chat: newConversation(id, 5),
+});
+const fail = (error: string): WorkspaceAction => ({
+  type: "fail",
+  id: "first",
+  requestId: "request-1",
+  error,
+  now: 5,
+});
 
 describe("saved conversations", () => {
   it("preserves each chat's brief, messages, plan and unsent draft when switching", () => {
@@ -62,8 +78,8 @@ describe("saved conversations", () => {
       workspace(),
       start,
       resolve,
-      { type: "draft", id: "first", value: "Make it $2,000", now: 4 },
-      { type: "new", chat: newConversation("second", 5) },
+      draft("Make it $2,000"),
+      newChat("second"),
       {
         type: "edit",
         id: "second",
@@ -84,30 +100,22 @@ describe("saved conversations", () => {
     expect(state.chats[1].result).toBeNull();
   });
   it("reuses a pristine new chat and never accumulates empty history entries", () => {
-    let state = apply(workspace(), {
-      type: "new",
-      chat: newConversation("unused", 2),
-    });
+    let state = apply(workspace(), newChat("unused"));
     expect(state.chats).toHaveLength(1);
     expect(state.activeId).toBe("first");
     expect(historyChats(state)).toHaveLength(0);
     state = apply(
       state,
-      { type: "draft", id: "first", value: "Draft campaign", now: 3 },
-      { type: "new", chat: newConversation("second", 4) },
-      { type: "new", chat: newConversation("unused-again", 5) },
+      draft("Draft campaign"),
+      newChat("second"),
+      newChat("unused-again"),
     );
     expect(state.chats).toHaveLength(2);
     expect(historyChats(state)).toHaveLength(1);
     expect(state.activeId).toBe("second");
   });
   it("routes an in-flight result to its original chat after navigation", () => {
-    const state = apply(
-      workspace(),
-      start,
-      { type: "new", chat: newConversation("second", 4) },
-      resolve,
-    );
+    const state = apply(workspace(), start, newChat("second"), resolve);
     expect(state.activeId).toBe("second");
     expect(first(state).result).toEqual(result);
     expect(state.chats[1].messages).toEqual([]);
@@ -139,41 +147,22 @@ describe("saved conversations", () => {
       { type: "cancel", id: "first" },
       { ...start, requestId: "request-2", now: 4 },
       resolve,
-      {
-        type: "fail",
-        id: "first",
-        requestId: "request-1",
-        error: "Old failure",
-        now: 5,
-      },
+      fail("Old failure"),
     );
     expect(first(state).request?.id).toBe("request-2");
     expect(first(state).result).toBeNull();
     expect(first(state).error).toBe("");
   });
   it("keeps a newly typed draft when an earlier turn succeeds or fails", () => {
-    const pending = apply(workspace(), start, {
-      type: "draft",
-      id: "first",
-      value: "Next question",
-      now: 3,
-    });
+    const pending = apply(workspace(), start, draft("Next question"));
     expect(first(apply(pending, resolve)).composer).toBe("Next question");
-    expect(
-      first(
-        apply(pending, {
-          type: "fail",
-          id: "first",
-          requestId: "request-1",
-          error: "Offline",
-          now: 4,
-        }),
-      ).composer,
-    ).toBe("Next question");
+    expect(first(apply(pending, fail("Offline"))).composer).toBe(
+      "Next question",
+    );
   });
   it("restores an interrupted request as a retryable draft without a stale plan", () => {
     const state = apply(workspace(), start);
-    const restored = restoreWorkspace(serializeWorkspace(state))!;
+    const restored = restoreWorkspace(JSON.stringify(state))!;
     expect(first(restored)).toMatchObject({
       request: null,
       result: null,
@@ -182,16 +171,15 @@ describe("saved conversations", () => {
     });
     expect(first(restored).error).toContain("interrupted");
   });
-  it.each(["not_used", "explanation_fallback"] as const)("restores %s results, pending questions, drafts and preferences", modelStatus => {
+  it("restores results, pending questions, drafts and preferences", () => {
     const state = apply(
       workspace(),
       start,
       resolve,
       { type: "sidebar", open: false },
-      { type: "draft", id: "first", value: "Keep this draft", now: 4 },
+      draft("Keep this draft"),
     );
-    first(state).result!.modelStatus = modelStatus;
-    expect(restoreWorkspace(serializeWorkspace(state))).toEqual(state);
+    expect(restoreWorkspace(JSON.stringify(state))).toEqual(state);
     const clarification: TurnResponse = {
       ...result,
       status: "clarification",
@@ -205,7 +193,7 @@ describe("saved conversations", () => {
       response: clarification,
     });
     expect(
-      first(restoreWorkspace(serializeWorkspace(clarifying))!).pending,
+      first(restoreWorkspace(JSON.stringify(clarifying))!).pending,
     ).toEqual(["impressionGoal"]);
   });
   it("rejects corrupt or unsupported stores instead of silently replacing them", () => {
@@ -216,20 +204,20 @@ describe("saved conversations", () => {
     ).toThrow();
     const state = workspace();
     state.chats.push(state.chats[0]);
-    expect(() => restoreWorkspace(serializeWorkspace(state))).toThrow(
+    expect(() => restoreWorkspace(JSON.stringify(state))).toThrow(
       "Duplicate chat IDs",
     );
   });
   it("discards invalid or mismatched saved results while preserving the brief and chat", () => {
     const state = apply(workspace(), start, resolve);
     state.chats[0].form.budget = "2000";
-    expect(first(restoreWorkspace(serializeWorkspace(state))!)).toMatchObject({
+    expect(first(restoreWorkspace(JSON.stringify(state))!)).toMatchObject({
       result: null,
       dirty: true,
       form: { budget: "2000" },
     });
     const invalid = JSON.parse(
-      serializeWorkspace(apply(workspace(), start, resolve)),
+      JSON.stringify(apply(workspace(), start, resolve)),
     );
     invalid.chats[0].result.recommendation.recommended.ctr = "invented";
     expect(first(restoreWorkspace(JSON.stringify(invalid))!).result).toBeNull();
@@ -247,10 +235,7 @@ describe("saved conversations", () => {
     expect(first(changed).error).toContain("source data has changed");
   });
   it("removes only the selected chat and chooses another or a fresh draft", () => {
-    let state = apply(workspace(), start, resolve, {
-      type: "new",
-      chat: newConversation("second", 4),
-    });
+    let state = apply(workspace(), start, resolve, newChat("second"));
     state = apply(state, {
       type: "remove",
       id: "second",
@@ -269,12 +254,10 @@ describe("saved conversations", () => {
   it("restores the last message on stop without erasing a subsequent draft", () => {
     let state = apply(workspace(), start, { type: "cancel", id: "first" });
     expect(first(state).composer).toBe(start.message);
-    state = apply(
-      workspace(),
-      start,
-      { type: "draft", id: "first", value: "New draft", now: 4 },
-      { type: "cancel", id: "first" },
-    );
+    state = apply(workspace(), start, draft("New draft"), {
+      type: "cancel",
+      id: "first",
+    });
     expect(first(state).composer).toBe("New draft");
   });
 });
@@ -288,12 +271,7 @@ describe("debounced workspace saves", () => {
     const saver = createWorkspaceSaver(write);
     let state = workspace();
     for (const value of ["A", "A draft", "A complete draft"]) {
-      state = apply(state, {
-        type: "draft",
-        id: "first",
-        value,
-        now: Date.now(),
-      });
+      state = apply(state, draft(value));
       saver.schedule(state);
       vi.advanceTimersByTime(200);
       expect(write).not.toHaveBeenCalled();

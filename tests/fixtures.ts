@@ -23,3 +23,15 @@ export function syntheticData(): Dataset {
       ).join("\n"),
   });
 }
+
+/** A JSON POST to the chat route, sent the way the browser sends it. */
+export const chatRequest = (body: string, origin = "http://127.0.0.1:3000") =>
+  new Request("http://localhost:3000/api/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      host: "127.0.0.1:3000",
+      origin,
+    },
+    body,
+  });

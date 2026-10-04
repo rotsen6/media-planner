@@ -8,57 +8,43 @@ export const VERTICALS = [
   "Entertainment",
 ] as const;
 export const GEOS = ["US", "EMEA", "APAC"] as const;
-export const KPIS = ["ctr", "inViewRate"] as const;
-export const moneySchema = z.number().finite().positive().max(1_000_000_000);
-export const impressionGoalSchema = z
-  .number()
-  .int()
-  .positive()
-  .max(1_000_000_000_000);
+const KPIS = ["ctr", "inViewRate"] as const;
+const budget = z.number().finite().positive().max(1_000_000_000);
 
 // null deliberately clears a field. An omitted field preserves its prior value.
-export const briefSchema = z
-  .object({
-    clientName: z.string().trim().min(1).max(120).nullable().optional(),
-    vertical: z.enum(VERTICALS).nullable().optional(),
-    kpi: z.enum(KPIS).nullable().optional(),
-    geo: z.enum(GEOS).nullable().optional(),
-    budget: moneySchema.nullable().optional(),
-    impressionGoal: impressionGoalSchema.nullable().optional(),
-  })
-  .strict();
-
+export const briefSchema = z.strictObject({
+  clientName: z.string().trim().min(1).max(120).nullish(),
+  vertical: z.enum(VERTICALS).nullish(),
+  kpi: z.enum(KPIS).nullish(),
+  geo: z.enum(GEOS).nullish(),
+  budget: budget.nullish(),
+  impressionGoal: z.number().int().positive().max(1e12).nullish(),
+});
 export const briefFieldSchema = briefSchema.keyof();
-
 export const completeBriefSchema = briefSchema.extend({
   vertical: z.enum(VERTICALS),
   kpi: z.enum(KPIS),
   geo: z.enum(GEOS),
-  budget: moneySchema,
+  budget,
 });
 
 export type Brief = z.infer<typeof briefSchema>;
+export type BriefField = keyof Brief;
 export type CompleteBrief = z.infer<typeof completeBriefSchema>;
+export type Kpi = CompleteBrief["kpi"];
 export const REQUIRED_FIELDS = ["vertical", "kpi", "geo", "budget"] as const;
-export type RequiredField = (typeof REQUIRED_FIELDS)[number];
 
-export function missingFields(brief: Brief): RequiredField[] {
-  return REQUIRED_FIELDS.filter((key) => brief[key] == null);
-}
+export const missingFields = (brief: Brief) =>
+  REQUIRED_FIELDS.filter((key) => brief[key] == null);
 
-export function mergeBrief(current: Brief, patch: Brief): Brief {
-  const validated = briefSchema.parse(patch);
-  return briefSchema.parse({
-    ...briefSchema.parse(current),
+/** Undefined (omitted) fields keep their prior value; the merged brief is validated once. */
+export const mergeBrief = (
+  current: Brief,
+  patch: Record<string, unknown>,
+): Brief =>
+  briefSchema.parse({
+    ...current,
     ...Object.fromEntries(
-      Object.entries(validated).filter(([, value]) => value !== undefined),
+      Object.entries(patch).filter(([, value]) => value !== undefined),
     ),
   });
-}
-
-export const fieldLabels: Record<RequiredField, string> = {
-  vertical: "vertical (Retail, Finance, Travel, QSR, or Entertainment)",
-  kpi: "primary KPI (click-through rate or in-view rate)",
-  geo: "geography (US, EMEA, or APAC)",
-  budget: "budget in dollars",
-};

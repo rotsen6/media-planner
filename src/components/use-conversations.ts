@@ -8,21 +8,24 @@ import {
   useRef,
   useState,
 } from "react";
-import { turnResponseSchema } from "@/lib/workflow-types";
 import {
   briefFromForm,
+  briefMessage,
   createWorkspaceSaver,
   emptyWorkspace,
   HISTORY_KEY,
   newConversation,
   restoreWorkspace,
-  serializeWorkspace,
   workspaceReducer,
   type FormBrief,
   type WorkspaceAction,
   type WorkspaceState,
 } from "@/lib/conversations";
+import { turnResponseSchema } from "@/lib/contract";
 
+const create = () => newConversation(crypto.randomUUID(), Date.now());
+
+/** Chats, their persistence in this browser, and one cancellable request per chat. */
 export function useConversations() {
   const [state, dispatchAction] = useReducer(workspaceReducer, emptyWorkspace);
   const [hydrated, setHydrated] = useState(false);
@@ -31,12 +34,11 @@ export function useConversations() {
   const requests = useRef(new Map<string, AbortController>());
   const stateRef = useRef(state);
   stateRef.current = state;
-  const create = () => newConversation(crypto.randomUUID(), Date.now());
   const saver = useMemo(
     () =>
       createWorkspaceSaver((next) => {
         try {
-          localStorage.setItem(HISTORY_KEY, serializeWorkspace(next));
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
           setStorageNotice("");
         } catch {
           setStorageNotice(
@@ -48,6 +50,7 @@ export function useConversations() {
   );
   const dispatch = useCallback(
     (action: WorkspaceAction) => {
+      // Leaving a chat writes immediately, so a quick reload never loses it.
       if (["switch", "new", "remove"].includes(action.type)) saver.flush();
       dispatchAction(action);
     },
@@ -72,14 +75,13 @@ export function useConversations() {
     setHydrated(true);
     const controllers = requests.current;
     return () => {
-      for (const request of controllers.values()) request.abort();
+      for (const controller of controllers.values()) controller.abort();
       controllers.clear();
     };
   }, [dispatch]);
 
   useEffect(() => {
-    if (!hydrated || !canSave.current) return;
-    saver.schedule(state);
+    if (hydrated && canSave.current) saver.schedule(state);
   }, [state, hydrated, saver]);
 
   useEffect(() => {
@@ -96,60 +98,27 @@ export function useConversations() {
   }, [saver]);
 
   const chat = state.chats.find((c) => c.id === state.activeId) ?? null;
-  function edit(field: keyof FormBrief, value: string) {
-    if (!chat) return;
-    requests.current.get(chat.id)?.abort();
-    requests.current.delete(chat.id);
-    dispatch({ type: "edit", id: chat.id, field, value, now: Date.now() });
-  }
-  function stop(id: string) {
+  const abort = (id: string) => {
     requests.current.get(id)?.abort();
     requests.current.delete(id);
-    dispatch({ type: "cancel", id });
-  }
+  };
   async function submit(mode: "chat" | "brief") {
-    const current = stateRef.current.chats.find(
-      (c) => c.id === stateRef.current.activeId,
-    );
+    const { chats, activeId } = stateRef.current;
+    const current = chats.find((c) => c.id === activeId);
     if (!current || current.request || requests.current.has(current.id)) return;
-    let brief;
-    try {
-      brief = briefFromForm(current.form);
-    } catch {
-      dispatch({
-        type: "error",
-        id: current.id,
-        error:
-          "Check the brief: budget must be positive and an impression goal must be a positive whole number.",
-      });
+    const brief = briefFromForm(current.form);
+    if (!brief) {
+      const error =
+        "Check the brief: budget must be positive and an impression goal must be a positive whole number.";
+      dispatch({ type: "error", id: current.id, error });
       return;
     }
     const message =
-      mode === "chat"
-        ? current.composer.trim()
-        : [
-            "Campaign brief",
-            current.form.clientName,
-            current.form.vertical,
-            current.form.geo,
-            current.form.kpi === "ctr"
-              ? "Click-through rate"
-              : current.form.kpi
-                ? "In-view rate"
-                : "",
-            current.form.budget
-              ? `$${Number(current.form.budget).toLocaleString("en-US")} budget`
-              : "",
-            current.form.impressionGoal
-              ? `${Number(current.form.impressionGoal).toLocaleString("en-US")} minimum impressions`
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" · ");
+      mode === "chat" ? current.composer.trim() : briefMessage(current.form);
     if (!message) return;
-    const id = current.id,
-      requestId = crypto.randomUUID(),
-      controller = new AbortController();
+    const { id } = current;
+    const requestId = crypto.randomUUID();
+    const controller = new AbortController();
     requests.current.set(id, controller);
     dispatch({ type: "start", id, requestId, mode, message, now: Date.now() });
     try {
@@ -163,11 +132,11 @@ export function useConversations() {
             : { mode, brief },
         ),
       });
-      const body = await response.json();
+      const body = await response.json().catch(() => null);
       const parsed = turnResponseSchema.safeParse(body);
       if (!parsed.success)
         throw new Error(
-          typeof body.error === "string"
+          typeof body?.error === "string"
             ? body.error
             : "The server returned an unreadable response. Please try again.",
         );
@@ -201,13 +170,19 @@ export function useConversations() {
     hydrated,
     storageNotice,
     dispatch,
-    edit,
     submit,
-    stop,
+    edit(field: keyof FormBrief, value: string) {
+      if (!chat) return;
+      abort(chat.id);
+      dispatch({ type: "edit", id: chat.id, field, value, now: Date.now() });
+    },
+    stop(id: string) {
+      abort(id);
+      dispatch({ type: "cancel", id });
+    },
     newChat: () => dispatch({ type: "new", chat: create() }),
-    removeChat: (id: string) => {
-      requests.current.get(id)?.abort();
-      requests.current.delete(id);
+    removeChat(id: string) {
+      abort(id);
       dispatch({ type: "remove", id, replacement: create() });
     },
   };
