@@ -1,4 +1,12 @@
-import type { Brief, BriefField } from "./brief";
+import {
+  GEOS,
+  KPI_LABELS,
+  KPIS,
+  VERTICALS,
+  type Brief,
+  type BriefField,
+  type Kpi,
+} from "./brief";
 import type { EvaluatedProduct, Recommendation } from "./recommend";
 
 const format = (options: Intl.NumberFormatOptions) =>
@@ -11,7 +19,12 @@ const [dollars, cents] = [0, 2].map((maximumFractionDigits) =>
 export const currency = (value: number) =>
   (Number.isInteger(value) ? dollars : cents)(value);
 export const kpiLabel = (kpi: string) =>
-  kpi === "ctr" ? "click-through rate" : "in-view rate";
+  (KPI_LABELS[kpi as Kpi] ?? "").toLowerCase();
+/** "a", "a and b", "a, b, and c"; the conjunction can be "or". */
+export const list = (items: readonly string[], conjunction = "and") =>
+  items.length < 3
+    ? items.join(` ${conjunction} `)
+    : `${items.slice(0, -1).join(", ")}, ${conjunction} ${items.at(-1)}`;
 
 export const productReason = (p: EvaluatedProduct) =>
   ({
@@ -24,12 +37,6 @@ export const productReason = (p: EvaluatedProduct) =>
       "Meets the constraints; ranked by the primary KPI, then forecast confidence on ties.",
   })[p.reason];
 
-const needs = {
-  vertical: "vertical (Retail, Finance, Travel, QSR, or Entertainment)",
-  kpi: "primary KPI (click-through rate or in-view rate)",
-  geo: "geography (US, EMEA, or APAC)",
-  budget: "budget in dollars",
-};
 const labels: Record<BriefField, string> = {
   clientName: "client name",
   vertical: "vertical",
@@ -38,19 +45,16 @@ const labels: Record<BriefField, string> = {
   budget: "budget",
   impressionGoal: "minimum impression goal",
 };
+/** What each field accepts, from the same lists the schema enforces. */
 const choices: Record<BriefField, string> = {
   clientName: "the client or advertiser name",
-  vertical: "Retail, Finance, Travel, QSR, or Entertainment",
-  kpi: "click-through rate or in-view rate",
-  geo: "US, EMEA, or APAC",
-  budget: "a dollar amount",
+  vertical: list(VERTICALS, "or"),
+  kpi: list(KPIS.map(kpiLabel), "or"),
+  geo: list(GEOS, "or"),
+  budget: "dollars",
   impressionGoal: "a number of impressions, or no minimum",
 };
-const verbs = {
-  unsupported: "isn't a supported",
-  invalid: "isn't a valid",
-  ambiguous: "is ambiguous for the",
-};
+const verbs = { unsupported: "isn't a supported", invalid: "isn't a valid" };
 const shown = (field: BriefField, value: string | number) =>
   ({
     clientName: `client ${value}`,
@@ -60,10 +64,6 @@ const shown = (field: BriefField, value: string | number) =>
     budget: `${currency(Number(value))} budget`,
     impressionGoal: `${number(Number(value))} minimum impressions`,
   })[field];
-const list = (items: string[]) =>
-  items.length < 3
-    ? items.join(" and ")
-    : `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
 
 /** One paragraph: what this message set, what it could not use, and what is still needed. */
 export function explainClarification({
@@ -75,9 +75,13 @@ export function explainClarification({
 }: {
   brief: Brief;
   changed?: BriefField[];
-  issues?: { field: BriefField; reason: keyof typeof verbs; quote: string }[];
+  issues?: {
+    field: BriefField;
+    reason: keyof typeof verbs | "ambiguous";
+    quote: string;
+  }[];
   pending: BriefField[];
-  missing: (keyof typeof needs)[];
+  missing: BriefField[];
 }): string {
   const flagged = new Set(issues.map((i) => i.field));
   const got = changed.flatMap((field) => {
@@ -87,15 +91,16 @@ export function explainClarification({
   const needed = missing.filter((field) => !flagged.has(field));
   return [
     got.length ? `Got it: ${list(got)}.` : "",
-    ...issues.map(
-      (i) =>
-        `“${i.quote}” ${verbs[i.reason]} ${labels[i.field]}. Please use ${choices[i.field]}.`,
+    ...issues.map((i) =>
+      i.reason === "ambiguous"
+        ? `“${i.quote}” leaves the ${labels[i.field]} open. Which do you want: ${choices[i.field]}?`
+        : `“${i.quote}” ${verbs[i.reason]} ${labels[i.field]}. Please use ${choices[i.field]}.`,
     ),
     !issues.length && pending.length
       ? `Please settle the ${list(pending.map((f) => labels[f]))}: give a value, drop it if it is optional, or edit the brief.`
       : "",
     needed.length
-      ? `To build your plan I still need your ${list(needed.map((f) => needs[f]))}.`
+      ? `What ${needed.length > 1 ? "are" : "is"} your ${list(needed.map((f) => `${labels[f]} (${choices[f]})`))}?`
       : "",
   ]
     .filter(Boolean)
@@ -111,8 +116,21 @@ const tradeoff = (p: EvaluatedProduct, goal: number) =>
     eligible: "",
   })[p.reason];
 
-const caveat =
+export const caveat =
   "Historical benchmarks are not guaranteed outcomes. History is vertical-specific, has no geography or dates, and inventory has no time dimension.";
+/** Products that rate above the plan but could not be used. */
+const outranked = ({
+  brief,
+  recommended: plan,
+  evaluatedProducts,
+}: Recommendation) =>
+  evaluatedProducts.filter(
+    (p) =>
+      plan &&
+      !p.eligible &&
+      p[brief.kpi] > plan[brief.kpi] &&
+      !plan.legs.some((leg) => leg.productId === p.productId),
+  );
 
 /** The plan message: the pick, and why the top-KPI product lost when it did. */
 export function explainRecommendation(result: Recommendation): string[] {
@@ -126,12 +144,8 @@ export function explainRecommendation(result: Recommendation): string[] {
   const sentences = [
     `${plan.name} is the highest-ranked feasible ${plan.legs.length === 1 ? "single product" : "two-product fallback"}, with a ${percent(plan[brief.kpi])} historical ${kpi} benchmark.`,
   ];
-  const best = result.evaluatedProducts[0];
-  if (
-    !best.eligible &&
-    best[brief.kpi] > plan[brief.kpi] &&
-    !plan.legs.some((leg) => leg.productId === best.productId)
-  )
+  const [best] = outranked(result);
+  if (best)
     sentences.push(
       `${best.name} has a higher ${kpi} (${percent(best[brief.kpi])}), but ${tradeoff(best, brief.impressionGoal ?? 0)}.`,
     );
@@ -147,12 +161,7 @@ export function explainChoice(result: Recommendation): string {
     percent(p[brief.kpi]);
   const goal = brief.impressionGoal ?? 0;
   const single = plan.legs.length === 1;
-  const higher = result.evaluatedProducts.filter(
-    (p) =>
-      !p.eligible &&
-      p[brief.kpi] > plan[brief.kpi] &&
-      !plan.legs.some((leg) => leg.productId === p.productId),
-  );
+  const higher = outranked(result);
   const tied = alternatives.filter(
     (a) => Math.abs(a[brief.kpi] - plan[brief.kpi]) < 1e-9,
   );

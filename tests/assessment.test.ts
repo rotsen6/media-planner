@@ -48,11 +48,13 @@ describe.skipIf(!existsSync(resolve(dataDir, "product_catalog.csv")))(
   () => {
     it("validates all supplied rows and balanced history", async () => {
       const data = await loadDataset();
-      expect(data.products).toHaveLength(6);
+      expect(data.products.size).toBe(6);
       expect(data.historyRows).toBe(1200);
-      expect(data.inventory).toHaveLength(90);
-      expect(data.benchmarks).toHaveLength(30);
-      expect(data.benchmarks.every((b) => b.lineItems === 40)).toBe(true);
+      expect(data.inventory.size).toBe(90);
+      expect(data.benchmarks.size).toBe(30);
+      expect(
+        [...data.benchmarks.values()].every((b) => b.lineItems === 40),
+      ).toBe(true);
       expect(await loadExampleBriefs()).toHaveLength(7);
     });
     it.each(cases.map((test, index) => ({ ...test, index })))(

@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { briefFieldSchema, briefSchema, type Brief } from "./brief";
+import {
+  briefFieldSchema,
+  briefSchema,
+  KPI_LABELS,
+  type Brief,
+  type Kpi,
+} from "./brief";
 import { number } from "./evidence";
 import {
   pendingFieldsSchema,
@@ -35,7 +41,6 @@ export const briefFromForm = (form: FormBrief): Brief | undefined =>
 
 const storedChatSchema = z.object({
   id: z.string().min(1),
-  createdAt: z.number(),
   updatedAt: z.number(),
   form: formSchema,
   composer: z.string().max(4000),
@@ -82,7 +87,6 @@ export const emptyWorkspace: WorkspaceState = {
 
 export const newConversation = (id: string, now: number): Conversation => ({
   id,
-  createdAt: now,
   updatedAt: now,
   form: { ...emptyForm },
   composer: "",
@@ -124,7 +128,7 @@ export const briefMessage = (f: FormBrief) =>
     f.clientName,
     f.vertical,
     f.geo,
-    f.kpi && (f.kpi === "ctr" ? "Click-through rate" : "In-view rate"),
+    f.kpi && KPI_LABELS[f.kpi as Kpi],
     f.budget && `$${Number(f.budget).toLocaleString("en-US")} budget`,
     f.impressionGoal && `${number(+f.impressionGoal)} minimum impressions`,
   ]

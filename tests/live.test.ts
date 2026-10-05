@@ -35,11 +35,14 @@ describe.skipIf(!live)("live model", { timeout: 180_000 }, () => {
         status: "ready",
         recommendation: { recommended: { id: want } },
       });
-    else
+    else {
       expect(result).toMatchObject({
         status: "clarification",
         missing: [want],
       });
+      // The supplied briefs say a detail is undecided; that is a question, not an invalid value.
+      expect(result.explanation[0]).not.toContain("supported");
+    }
   });
   it("maps a mobile game to Entertainment and asks only for what is missing", async () => {
     const message =

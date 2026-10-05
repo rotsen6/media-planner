@@ -8,8 +8,8 @@ export async function GET() {
     loadDataset().then(
       (d) => ({
         ready: true,
-        products: d.products.length,
-        benchmarks: d.benchmarks.length,
+        products: d.products.size,
+        benchmarks: d.benchmarks.size,
         historyRows: d.historyRows,
         version: d.version,
       }),

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { completeBriefSchema, type CompleteBrief, type Kpi } from "./brief";
+import {
+  completeBriefSchema,
+  key,
+  type CompleteBrief,
+  type Kpi,
+} from "./brief";
 import type { Dataset } from "./data";
 
 const POLICY_VERSION = "ceiling-confidence-tie-single-first-v1";
@@ -88,14 +93,9 @@ function rank<T>(items: T[], key: RankKey<T>): T[] {
 /** One product's catalog row, vertical benchmark, and vertical/geo inventory. */
 function facts(data: Dataset, brief: CompleteBrief, productId: string) {
   const { vertical, geo } = brief;
-  const product = data.products.find((p) => p.product_id === productId);
-  const history = data.benchmarks.find(
-    (b) => b.productId === productId && b.vertical === vertical,
-  );
-  const stock = data.inventory.find(
-    (i) =>
-      i.product_id === productId && i.vertical === vertical && i.geo === geo,
-  );
+  const product = data.products.get(productId);
+  const history = data.benchmarks.get(key(productId, vertical));
+  const stock = data.inventory.get(key(productId, vertical, geo));
   if (!product || !history || !stock)
     throw new Error("Incomplete evidence for campaign brief");
   return {
@@ -217,7 +217,9 @@ function bestPair(
 /** The calculator has no model, I/O, session state, or side effects. */
 export function recommend(input: CompleteBrief, data: Dataset): Recommendation {
   const brief = completeBriefSchema.parse(input);
-  const products = data.products.map((p) => facts(data, brief, p.product_id));
+  const products = [...data.products.keys()].map((id) =>
+    facts(data, brief, id),
+  );
   const evaluated = products.map((product) => evaluate(brief, product));
   const singles = products.flatMap((product, i) =>
     evaluated[i].eligible

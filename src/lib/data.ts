@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parse } from "csv-parse/sync";
 import { z } from "zod";
-import { GEOS, VERTICALS } from "./brief";
+import { GEOS, key, VERTICALS } from "./brief";
 
 const numeric = z
   .string()
@@ -46,51 +46,56 @@ const csv = { columns: true, bom: true, skip_empty_lines: true, trim: true };
 const readRows = <T>(source: string, schema: z.ZodType<T>) =>
   z.array(schema).min(1).parse(parse(source, csv));
 
-/** Validate once, aggregate before joining, and fingerprint the exact evidence used. */
+// Benchmarks are ratios of totals, never averages of row rates.
+function benchmark(rows: z.infer<typeof historyRow>[]) {
+  const total = (field: "impressions" | "clicks" | "viewable_impressions") =>
+    rows.reduce((sum, row) => sum + row[field], 0);
+  const impressions = total("impressions");
+  const clicks = total("clicks");
+  const viewableImpressions = total("viewable_impressions");
+  if (![impressions, clicks, viewableImpressions].every(Number.isSafeInteger))
+    throw new Error("Historical totals exceed safe integer precision");
+  return {
+    productId: rows[0].product_id,
+    vertical: rows[0].vertical,
+    impressions,
+    clicks,
+    viewableImpressions,
+    lineItems: rows.length,
+    ctr: clicks / impressions,
+    inViewRate: viewableImpressions / impressions,
+  };
+}
+
+/** Validate once, aggregate before joining, index by key, and fingerprint the evidence. */
 export function parseDataset(sources: DataSources) {
-  const products = readRows(sources.catalog, productRow);
+  const catalog = readRows(sources.catalog, productRow);
   const history = readRows(sources.history, historyRow);
-  const inventory = readRows(sources.inventory, inventoryRow);
-  const ids = new Set(products.map((p) => p.product_id));
-  if (ids.size !== products.length)
+  const stock = readRows(sources.inventory, inventoryRow);
+  const products = new Map(catalog.map((p) => [p.product_id, p]));
+  if (products.size !== catalog.length)
     throw new Error("Duplicate catalog product ID");
-  if (history.some((row) => !ids.has(row.product_id)))
+  if (history.some((row) => !products.has(row.product_id)))
     throw new Error("History references an unknown product");
-  if (inventory.some((row) => !ids.has(row.product_id)))
+  if (stock.some((row) => !products.has(row.product_id)))
     throw new Error("Inventory references an unknown product");
-  const groups = Map.groupBy(history, (r) => `${r.product_id}:${r.vertical}`);
-  const stock = new Set(
-    inventory.map((r) => `${r.product_id}:${r.vertical}:${r.geo}`),
+  const inventory = new Map(
+    stock.map((r) => [key(r.product_id, r.vertical, r.geo), r]),
   );
-  if (stock.size !== inventory.length)
+  if (inventory.size !== stock.length)
     throw new Error("Duplicate inventory key");
-  for (const product of ids)
+  const benchmarks = new Map(
+    [...Map.groupBy(history, (r) => key(r.product_id, r.vertical))].map(
+      ([k, rows]) => [k, benchmark(rows)] as const,
+    ),
+  );
+  for (const product of products.keys())
     for (const vertical of VERTICALS) {
-      if (!groups.has(`${product}:${vertical}`))
+      if (!benchmarks.has(key(product, vertical)))
         throw new Error("Missing product/vertical history");
-      if (GEOS.some((geo) => !stock.has(`${product}:${vertical}:${geo}`)))
+      if (GEOS.some((geo) => !inventory.has(key(product, vertical, geo))))
         throw new Error("Missing inventory combination");
     }
-  // Benchmarks are ratios of totals, never averages of row rates.
-  const benchmarks = [...groups.values()].map((rows) => {
-    const total = (key: "impressions" | "clicks" | "viewable_impressions") =>
-      rows.reduce((sum, row) => sum + row[key], 0);
-    const impressions = total("impressions");
-    const clicks = total("clicks");
-    const viewableImpressions = total("viewable_impressions");
-    if (![impressions, clicks, viewableImpressions].every(Number.isSafeInteger))
-      throw new Error("Historical totals exceed safe integer precision");
-    return {
-      productId: rows[0].product_id,
-      vertical: rows[0].vertical,
-      impressions,
-      clicks,
-      viewableImpressions,
-      lineItems: rows.length,
-      ctr: clicks / impressions,
-      inViewRate: viewableImpressions / impressions,
-    };
-  });
   const version = createHash("sha256")
     .update(JSON.stringify(sources))
     .digest("hex")

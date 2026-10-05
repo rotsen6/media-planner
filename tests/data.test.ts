@@ -24,13 +24,13 @@ describe("validated evidence", () => {
   it("uses ratios of totals, preserves quoted CSV fields, and fingerprints evidence", () => {
     const sources = fixture();
     const data = parseDataset(sources);
-    expect(data.benchmarks[0]).toMatchObject({
+    expect(data.benchmarks.get("X:Retail")).toMatchObject({
       ctr: 0.019,
       inViewRate: 0.86,
       lineItems: 2,
       impressions: 1000,
     });
-    expect(data.products[0].product_description).toBe(
+    expect(data.products.get("X")?.product_description).toBe(
       "Rich media, for testing",
     );
     expect(data.version).toBe(parseDataset(sources).version);

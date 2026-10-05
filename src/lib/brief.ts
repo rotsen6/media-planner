@@ -8,8 +8,19 @@ export const VERTICALS = [
   "Entertainment",
 ] as const;
 export const GEOS = ["US", "EMEA", "APAC"] as const;
-const KPIS = ["ctr", "inViewRate"] as const;
-const budget = z.number().finite().positive().max(1_000_000_000);
+export const KPIS = ["ctr", "inViewRate"] as const;
+export type Kpi = (typeof KPIS)[number];
+export const KPI_LABELS: Record<Kpi, string> = {
+  ctr: "Click-through rate",
+  inViewRate: "In-view rate",
+};
+/** Numeric bounds, shared by the schema and the brief form. */
+export const LIMITS = {
+  budget: { min: 0.01, max: 1_000_000_000 },
+  impressionGoal: { min: 1, max: 1_000_000_000_000 },
+};
+const bounded = ({ min, max }: { min: number; max: number }) =>
+  z.number().finite().min(min).max(max);
 
 // null deliberately clears a field. An omitted field preserves its prior value.
 export const briefSchema = z.strictObject({
@@ -17,22 +28,23 @@ export const briefSchema = z.strictObject({
   vertical: z.enum(VERTICALS).nullish(),
   kpi: z.enum(KPIS).nullish(),
   geo: z.enum(GEOS).nullish(),
-  budget: budget.nullish(),
-  impressionGoal: z.number().int().positive().max(1e12).nullish(),
+  budget: bounded(LIMITS.budget).nullish(),
+  impressionGoal: bounded(LIMITS.impressionGoal).int().nullish(),
 });
 export const briefFieldSchema = briefSchema.keyof();
 export const completeBriefSchema = briefSchema.extend({
   vertical: z.enum(VERTICALS),
   kpi: z.enum(KPIS),
   geo: z.enum(GEOS),
-  budget,
+  budget: bounded(LIMITS.budget),
 });
 
 export type Brief = z.infer<typeof briefSchema>;
 export type BriefField = keyof Brief;
 export type CompleteBrief = z.infer<typeof completeBriefSchema>;
-export type Kpi = CompleteBrief["kpi"];
 export const REQUIRED_FIELDS = ["vertical", "kpi", "geo", "budget"] as const;
+/** Evidence lookup keys: product and vertical for benchmarks, plus geo for inventory. */
+export const key = (...parts: string[]) => parts.join(":");
 
 export const missingFields = (brief: Brief) =>
   REQUIRED_FIELDS.filter((key) => brief[key] == null);

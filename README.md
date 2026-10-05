@@ -64,7 +64,7 @@ The graph has five nodes: extract, merge, clarify, calculate, and answer. A chat
 | Code                                                              | Responsibility                                                       |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------- |
 | `src/lib/brief.ts`, `contract.ts`                                 | Campaign fields; HTTP request/response schemas and body size limits  |
-| `src/lib/data.ts`                                                 | Parse CSVs, validate joins, aggregate history, fingerprint and cache |
+| `src/lib/data.ts`                                                 | Parse CSVs, validate joins, aggregate and index history, cache       |
 | `src/lib/recommend.ts`                                            | Feasibility, ranking, two-product allocation, feasibility invariants |
 | `src/lib/model.ts`, `workflow.ts`                                 | Ollama adapter, quote validation, and LangGraph routing              |
 | `src/lib/evidence.ts`                                             | Number formatting and all user-facing explanation text               |

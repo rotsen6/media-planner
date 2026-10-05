@@ -1,10 +1,20 @@
 "use client";
 
 import { Fragment, useState, type InputHTMLAttributes } from "react";
-import { GEOS, REQUIRED_FIELDS, VERTICALS } from "@/lib/brief";
-import type { Conversation, FormBrief } from "@/lib/conversations";
 import {
+  GEOS,
+  KPI_LABELS,
+  KPIS,
+  LIMITS,
+  REQUIRED_FIELDS,
+  VERTICALS,
+  type BriefField as Field,
+} from "@/lib/brief";
+import type { Conversation } from "@/lib/conversations";
+import {
+  caveat,
   currency,
+  explainRecommendation,
   kpiLabel,
   number,
   percent,
@@ -13,7 +23,6 @@ import {
 import type { Plan, Recommendation } from "@/lib/recommend";
 import { Icon } from "./icons";
 
-type Field = keyof FormBrief;
 type Props = {
   chat: Conversation;
   edit: (field: Field, value: string) => void;
@@ -32,7 +41,7 @@ const FIELDS: Record<
   }
 > = {
   clientName: {
-    label: "Campaign name",
+    label: "Client name",
     hint: "Optional",
     placeholder: "e.g. StellarBank",
     input: { maxLength: 120 },
@@ -50,10 +59,7 @@ const FIELDS: Record<
   kpi: {
     label: "Primary KPI",
     placeholder: "Choose a KPI",
-    options: [
-      ["ctr", "Click-through rate"],
-      ["inViewRate", "In-view rate"],
-    ],
+    options: KPIS.map((kpi) => [kpi, KPI_LABELS[kpi]]),
   },
   budget: {
     label: "Budget ceiling",
@@ -62,8 +68,7 @@ const FIELDS: Record<
     input: {
       type: "number",
       inputMode: "decimal",
-      min: "0.01",
-      max: "1000000000",
+      ...LIMITS.budget,
       step: "any",
       required: true,
     },
@@ -75,8 +80,7 @@ const FIELDS: Record<
     input: {
       type: "number",
       inputMode: "numeric",
-      min: "1",
-      max: "1000000000000",
+      ...LIMITS.impressionGoal,
       step: "1",
     },
   },
@@ -307,6 +311,7 @@ export function PlanPanel({ close, ...props }: Props & { close: () => void }) {
     ([, value]) => value.trim(),
   );
   const pair = plan && plan.legs.length > 1;
+  const summary = result && explainRecommendation(result)[0];
   return (
     <aside className="plan-pane" aria-labelledby="plan-heading">
       <div className="panel-heading">
@@ -391,10 +396,7 @@ export function PlanPanel({ close, ...props }: Props & { close: () => void }) {
                   {pair ? "Two-product plan" : "Recommended product"}
                 </p>
                 <h3 className="plan-name">{plan.name}</h3>
-                <p className="muted small">
-                  Highest-ranked feasible {pair ? "bundle" : "single product"}{" "}
-                  for your {kpiLabel(result.brief.kpi)} objective.
-                </p>
+                <p className="muted small">{summary}</p>
                 <PlanMetrics plan={plan} kpi={result.brief.kpi} />
                 <p className="budget-note">
                   {currency(plan.unspentBudget)} unused of your{" "}
@@ -414,22 +416,13 @@ export function PlanPanel({ close, ...props }: Props & { close: () => void }) {
                   </p>
                 )}
                 <Confidence plan={plan} />
-                <p className="muted micro benchmark-note">
-                  Historical benchmarks are not guaranteed outcomes. Performance
-                  history is specific to the vertical, not geography or dates;
-                  inventory is not time-bound.
-                </p>
+                <p className="muted micro benchmark-note">{caveat}</p>
               </section>
             )}
             {result && !plan && (
               <div className="infeasible">
                 <h3>No feasible plan yet</h3>
-                <p>
-                  No single product
-                  {result.bundleSearchUsed ? " or two-product bundle" : ""}{" "}
-                  meets these constraints. Adjust the budget or impression goal;
-                  inventory may still limit delivery.
-                </p>
+                <p>{summary}</p>
                 <button
                   className="secondary-button"
                   onClick={() => setEditing(true)}
