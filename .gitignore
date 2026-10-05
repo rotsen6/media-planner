@@ -2,7 +2,7 @@ node_modules/
 .next/
 .env*
 next-env.d.ts
-# Supplied assessment material: keep private until redistribution is approved.
+# Input data and reference material are not redistributed.
 data/private/
 reference/
 .DS_Store

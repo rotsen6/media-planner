@@ -372,22 +372,19 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
       };
     }
     case "fail":
-      if (chat.request?.id !== action.requestId) return chat;
-      return {
-        ...chat,
-        request: null,
-        dirty: true,
-        error: action.error,
-        updatedAt: action.now,
-        composer: recoverDraft(chat),
-      };
     case "cancel":
+      if (action.type === "fail" && chat.request?.id !== action.requestId)
+        return chat;
       return {
         ...chat,
         request: null,
         dirty: true,
         composer: recoverDraft(chat),
-        error: "Response stopped. You can revise the brief or send again.",
+        updatedAt: action.type === "fail" ? action.now : chat.updatedAt,
+        error:
+          action.type === "fail"
+            ? action.error
+            : "Response stopped. You can revise the brief or send again.",
       };
   }
 }

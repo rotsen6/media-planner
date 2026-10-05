@@ -7,7 +7,11 @@ import {
   type BriefField,
   type Kpi,
 } from "./brief";
-import type { EvaluatedProduct, Recommendation } from "./recommend";
+import {
+  nearlyEqual,
+  type EvaluatedProduct,
+  type Recommendation,
+} from "./recommend";
 
 const format = (options: Intl.NumberFormatOptions) =>
   new Intl.NumberFormat("en-US", options).format;
@@ -55,6 +59,9 @@ const choices: Record<BriefField, string> = {
   impressionGoal: "a number of impressions, or no minimum",
 };
 const verbs = { unsupported: "isn't a supported", invalid: "isn't a valid" };
+// Unknown details still block a plan; this affects only how we ask for them.
+const UNKNOWN =
+  /(?:\bnot\b|n't|\bno\b|\bnever\b)[^.]{0,24}\b(provided|said|specified|decided|given|known|sure|chosen|confirmed|determined|mentioned|settled)\b|\b(tbd|tba|unknown|undecided|unspecified|unsure)\b/i;
 const shown = (field: BriefField, value: string | number) =>
   ({
     clientName: `client ${value}`,
@@ -92,8 +99,8 @@ export function explainClarification({
   return [
     got.length ? `Got it: ${list(got)}.` : "",
     ...issues.map((i) =>
-      i.reason === "ambiguous"
-        ? `“${i.quote}” leaves the ${labels[i.field]} open. Which do you want: ${choices[i.field]}?`
+      i.reason === "ambiguous" || UNKNOWN.test(i.quote)
+        ? `“${i.quote}” leaves the ${labels[i.field]} open. What ${labels[i.field]} should I use (${choices[i.field]})?`
         : `“${i.quote}” ${verbs[i.reason]} ${labels[i.field]}. Please use ${choices[i.field]}.`,
     ),
     !issues.length && pending.length
@@ -129,6 +136,7 @@ const outranked = ({
       plan &&
       !p.eligible &&
       p[brief.kpi] > plan[brief.kpi] &&
+      !nearlyEqual(p[brief.kpi], plan[brief.kpi]) &&
       !plan.legs.some((leg) => leg.productId === p.productId),
   );
 
@@ -162,8 +170,8 @@ export function explainChoice(result: Recommendation): string {
   const goal = brief.impressionGoal ?? 0;
   const single = plan.legs.length === 1;
   const higher = outranked(result);
-  const tied = alternatives.filter(
-    (a) => Math.abs(a[brief.kpi] - plan[brief.kpi]) < 1e-9,
+  const tied = alternatives.filter((a) =>
+    nearlyEqual(a[brief.kpi], plan[brief.kpi]),
   );
   const lower = alternatives.filter((a) => !tied.includes(a));
   const unused = plan.unspentBudget

@@ -27,6 +27,8 @@ function ChatNavigation({
   select,
   remove,
   mobileClose,
+  search,
+  setSearch,
 }: {
   chats: Conversation[];
   activeId: string | null;
@@ -34,14 +36,17 @@ function ChatNavigation({
   select: (id: string) => void;
   remove: (id: string) => void;
   mobileClose?: () => void;
+  search: string;
+  setSearch: (value: string) => void;
 }) {
-  const [search, setSearch] = useState("");
   const query = search.toLowerCase().trim();
-  const matches = chats.filter((chat) =>
-    [chatTitle(chat), ...chat.messages.map((m) => m.text)].some((text) =>
-      text.toLowerCase().includes(query),
-    ),
-  );
+  const matches = query
+    ? chats.filter(
+        (chat) =>
+          chatTitle(chat).toLowerCase().includes(query) ||
+          chat.messages.some((m) => m.text.toLowerCase().includes(query)),
+      )
+    : chats;
   return (
     <nav className="chat-navigation" aria-label="Chat history">
       <div className="nav-top">
@@ -282,8 +287,8 @@ function SetupNote({ onVersion }: { onVersion: (version: string) => void }) {
         <div>
           {noData ? (
             <>
-              Extract the four assessment files into <code>data/private/</code>{" "}
-              as the README shows, then restart.
+              Extract the four data files into <code>data/private/</code> as the
+              README shows, then restart.
             </>
           ) : (
             <>
@@ -308,6 +313,7 @@ export default function Workspace({ examples }: { examples: string[] }) {
   const [mobile, setMobile] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
+  const [search, setSearch] = useState("");
   const composer = useRef<HTMLTextAreaElement>(null);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   const onVersion = useCallback(
@@ -354,14 +360,16 @@ export default function Workspace({ examples }: { examples: string[] }) {
   const openPlan = () => setPlan(true);
   const draft = (value: string) =>
     chat && dispatch({ type: "draft", id: chat.id, value, now: Date.now() });
-  const navigation = (mobileClose?: () => void) => (
+  const navigation = (mobile ? drawerOpen : state.sidebarOpen) && (
     <ChatNavigation
       chats={historyChats(state)}
       activeId={state.activeId}
       newChat={startChat}
       select={selectChat}
       remove={actions.removeChat}
-      mobileClose={mobileClose}
+      mobileClose={mobile ? closeDrawer : undefined}
+      search={search}
+      setSearch={setSearch}
     />
   );
   const hasBrief = chat && Object.values(chat.form).some(Boolean);
@@ -443,7 +451,7 @@ export default function Workspace({ examples }: { examples: string[] }) {
           className="desktop-history"
           hidden={!state.sidebarOpen}
         >
-          {navigation()}
+          {!mobile && navigation}
         </aside>
         <main className="work-area">
           <section
@@ -584,7 +592,7 @@ export default function Workspace({ examples }: { examples: string[] }) {
         </main>
       </div>
       <MobileHistory open={drawerOpen} close={closeDrawer}>
-        <div id="mobile-history">{navigation(closeDrawer)}</div>
+        <div id="mobile-history">{mobile && navigation}</div>
       </MobileHistory>
     </div>
   );

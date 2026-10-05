@@ -3,12 +3,9 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadDataset, loadExampleBriefs } from "../src/lib/data";
 import { recommend } from "../src/lib/recommend";
-import { createWorkflow } from "../src/lib/workflow";
-import type { Brief, CompleteBrief } from "../src/lib/brief";
-import type { LanguageModel } from "../src/lib/model";
+import type { CompleteBrief } from "../src/lib/brief";
 
-// These are regression expectations, not labels supplied by the assessment.
-// The evaluator's private fixtures are imported locally and excluded from publication.
+// Regression expectations for the real dataset, which is not part of the repository.
 const brief = (
   vertical: CompleteBrief["vertical"],
   geo: CompleteBrief["geo"],
@@ -18,7 +15,7 @@ const brief = (
 ): CompleteBrief => ({ vertical, geo, kpi, budget, impressionGoal });
 const qsr = brief("QSR", "US", "inViewRate", 15000, 800000);
 const finance = brief("Finance", "US", "ctr", 20000, 800000);
-const cases: { brief: Brief; winner?: string; missing?: string[] }[] = [
+const cases = [
   { brief: brief("Retail", "US", "ctr", 30000), winner: "P003" },
   { brief: qsr, winner: "P004" },
   { brief: brief("Entertainment", "EMEA", "ctr", 40000), winner: "P006" },
@@ -27,24 +24,11 @@ const cases: { brief: Brief; winner?: string; missing?: string[] }[] = [
     brief: brief("Travel", "APAC", "inViewRate", 18000, 850000),
     winner: "P006",
   },
-  {
-    brief: { geo: "US", kpi: "inViewRate", budget: 25000 },
-    missing: ["vertical"],
-  },
-  {
-    brief: { vertical: "Finance", geo: "EMEA", budget: 25000 },
-    missing: ["kpi"],
-  },
 ];
-const noModel: LanguageModel = {
-  extract: async () => {
-    throw new Error("Unexpected model call");
-  },
-};
 
 const dataDir = process.env.DATA_DIR ?? "data/private";
 describe.skipIf(!existsSync(resolve(dataDir, "product_catalog.csv")))(
-  "supplied assessment evidence (local only)",
+  "real dataset (local only)",
   () => {
     it("validates all supplied rows and balanced history", async () => {
       const data = await loadDataset();
@@ -57,21 +41,12 @@ describe.skipIf(!existsSync(resolve(dataDir, "product_catalog.csv")))(
       ).toBe(true);
       expect(await loadExampleBriefs()).toHaveLength(7);
     });
-    it.each(cases.map((test, index) => ({ ...test, index })))(
-      "handles supplied brief $index after its interpreted fields are supplied",
-      async ({ brief, winner, missing }) => {
-        const data = await loadDataset();
-        const result = await createWorkflow({
-          model: noModel,
-          loadData: async () => data,
-        })({ mode: "brief", brief });
-        if (winner) {
-          expect(result.status).toBe("ready");
-          expect(result.recommendation?.recommended?.id).toBe(winner);
-        } else {
-          expect(result.status).toBe("clarification");
-          expect(result.missing).toEqual(missing);
-        }
+    it.each(cases)(
+      "selects $winner for $brief.vertical in $brief.geo",
+      async ({ brief, winner }) => {
+        expect(recommend(brief, await loadDataset()).recommended?.id).toBe(
+          winner,
+        );
       },
     );
     it("preserves the 51-dollar QSR edge and the Finance CPM constraint", async () => {

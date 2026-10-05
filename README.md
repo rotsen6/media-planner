@@ -1,6 +1,6 @@
 # Kargo Media Planner
 
-A Next.js assessment app that turns a campaign brief into a feasible media plan. The model interprets language; TypeScript owns the calculations, constraints, and rankings. The brief editor works without a model.
+A Next.js app that turns a campaign brief into a feasible media plan. The model interprets language; TypeScript owns the calculations, constraints, and rankings. The brief editor works without a model.
 
 ## Run
 
@@ -8,7 +8,7 @@ Requires Node.js 22+ and npm. From the repository root:
 
 ```bash
 npm ci
-mkdir -p data/private && unzip -jo "/path/to/AI_Engineer_Case_Study.zip" "AI Engineer Case Study/*.csv" "AI Engineer Case Study/client_briefs.json" -d data/private
+mkdir -p data/private && unzip -jo "/path/to/archive.zip" "*/product_catalog.csv" "*/campaign_history.csv" "*/inventory_forecaster.csv" "*/client_briefs.json" -d data/private
 npm run dev
 ```
 
@@ -28,9 +28,9 @@ curl http://127.0.0.1:3000/api/status
 npm run test:live
 ```
 
-The status endpoint should report `modelReady: true`. The service runs locally and starts at login; stop it with `brew services stop ollama`. Other installations can use [Ollama's installer](https://ollama.com/download) and `ollama serve`.
+The status endpoint should report `modelReady: true`. The service runs locally and starts at login; stop it with `brew services stop ollama`. The app asks Ollama to keep the model loaded between turns (`keep_alive: -1`), so it stays in memory until Ollama restarts. Other installations can use [Ollama's installer](https://ollama.com/download) and `ollama serve`.
 
-The default [Qwen2.5 14B model](https://ollama.com/library/qwen2.5:14b) downloads about 9 GB. Extraction uses a non-thinking instruction model with schema-constrained output and application validation.
+The default [Qwen2.5 14B model](https://ollama.com/library/qwen2.5:14b) downloads about 9 GB. Extraction uses a non-thinking instruction model in JSON mode with application schema validation.
 
 An optional `.env.local` can override `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`), `OLLAMA_MODEL` (`qwen2.5:14b`), and `DATA_DIR` (`data/private`). The adapter and status endpoint share one server configuration. No paid API or database is required. A hosted server would need its own reachable model endpoint; it cannot use your laptop's `localhost`.
 
@@ -51,15 +51,12 @@ flowchart LR
 flowchart TD
   Mode{Input mode} -->|Chat| Extract[Extract quoted changes and intent]
   Mode -->|Brief editor| Merge[Validate and merge brief]
-  Extract -->|Brief change| Merge
-  Extract -->|Question or small talk| Answer[Answer from the current plan's evidence]
-  Merge --> Complete{Required fields and ambiguities resolved?}
-  Complete -->|No| Clarify[Return clarification]
-  Complete -->|Yes| Calculate[Calculate and validate plan]
-  Calculate --> Return[Return plan and deterministic explanation]
+  Extract --> Merge
+  Merge --> Respond[Clarify or calculate and explain]
+  Respond --> Return[Return canonical brief and response]
 ```
 
-The graph has five nodes: extract, merge, clarify, calculate, and answer. A chat turn needs one model call, which extracts quoted changes and classifies intent as a brief change, a question, or small talk. Code routes on that intent, and any message that sets or flags a field counts as a brief change. Questions get the plan's rationale, recalculated from evidence; small talk gets a short prompt for what is still needed; the calculator validates its own result and explanation text comes directly from verified evidence. Clarification ends the request; the next message supplies the current brief and unresolved fields. The server recalculates every recommendation from its evidence. No campaign state lives in a server global and no graph checkpointer is needed.
+The graph has three nodes: extract, merge, and respond. One model call extracts quoted changes and classifies intent; any field change or issue takes precedence over question or small-talk intent. Merge preserves the brief on pure questions and small talk. Respond asks for unresolved details or calculates a verified plan, then selects deterministic explanation text for the intent. Clarification ends the request; the next message supplies the current brief and unresolved fields. Campaign state is invocation-local, with no graph checkpointer.
 
 | Code                                                              | Responsibility                                                       |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------- |
@@ -84,7 +81,7 @@ Required fields: vertical, KPI, geography, and budget. Campaign name and minimum
 
 History has no geography or dates; inventory has no time dimension. Historical performance is not guaranteed. Product impressions add together, but are not deduplicated audience reach.
 
-Two useful demos: Finance/US, $20,000, CTR, 800,000 minimum impressions selects Commerce Connect; Premium Takeover buys only 625,000 impressions. QSR/US, $15,000, in-view rate, the same minimum selects Social Amplifier and leaves $51 unused.
+Two useful demos: Finance/US, $20,000, CTR, 800,000 minimum impressions, where the product with the best CTR is rejected because the budget buys only 625,000 of them; and QSR/US, $15,000, in-view rate, the same minimum, which leaves $51 unused.
 
 ## State and failure behavior
 
@@ -92,7 +89,7 @@ Each chat saves its messages, draft, brief, pending questions, and result in thi
 
 Storage is local to this browser and origin, with no account sync or concurrent-tab merging. Clearing browser data removes chats; storage failures show a notice. The transcript is not sent as accumulated model history: each request sends the latest message, canonical brief, and unresolved fields.
 
-The model returns each changed value and issue with its source quote. One extraction schema, derived from the campaign fields, is both the Ollama response format and the workflow's validation; every quote must appear in the message. Quotes and structured output do not prove semantic correctness. Extraction failure preserves the prior brief. Explanations use deterministic text. The editable brief lets the strategist correct interpretation errors. Model calls allow 45 seconds for cold starts, extraction has at most two attempts, and the workflow has an 85-second limit, reported as a model timeout. Input/output sizes are bounded.
+The model returns each changed value and issue with its source quote. A schema derived from the campaign fields validates its JSON before the workflow applies it; every quote must appear in the message. The adapter uses JSON mode because schema-constrained generation omitted explicitly requested fields in live checks. Quotes and structured output do not prove semantic correctness. Extraction failure preserves the prior brief. Explanations use deterministic text. The editable brief lets the strategist correct interpretation errors. Model calls allow 45 seconds for cold starts, extraction has at most two attempts, and the workflow has an 85-second limit, reported as a model timeout. Input/output sizes are bounded.
 
 ## Verify
 
@@ -101,12 +98,10 @@ npm run check       # TypeScript, unit/integration tests, production build
 npm run test:live   # Imported data + real Ollama model; no running app needed
 ```
 
-Nine dataset-specific tests skip when private inputs are absent, and the live-model tests run only through `test:live`. Model doubles test workflow behavior; `test:live` sends the seven supplied briefs, a vague mobile-game brief, a question, small talk, a what-if change, and an unsupported geography with its correction through the real model and chat route. Tests cover calculations, workflow failures, quoted model output, saved chats, and debounced writes.
+Seven dataset-specific tests skip when private inputs are absent, and the live-model tests run only through `test:live`. Model doubles test workflow behavior; `test:live` sends the seven example briefs, a vague mobile-game brief, a question, small talk, a what-if change, and an unsupported geography with its correction through the real model and chat route. Tests cover calculations, workflow failures, quoted model output, saved chats, and debounced writes.
 
-## References and delivery
+## References
 
 The design follows [LangGraph's workflow model](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents) and [Ollama structured output](https://docs.ollama.com/capabilities/structured-outputs). Dark surfaces adapt the public [Kargo](https://www.kargo.com/) wordmark and colors; they are not an official dark-mode specification. IBM Plex Sans is bundled locally with its [OFL license](src/app/fonts/OFL.txt). Next.js maintains `AGENTS.md` and `CLAUDE.md` as tooling instructions.
 
-For the assessment presentation: demonstrate the two briefs above, explain model versus calculator responsibilities, show a correction and failure recovery, then discuss extraction evaluation, inventory periods, and confidence calibration. The assessment's “30 min. Presentation + Q&A” timing still needs clarification. This README is the sole project guide; a finished slide deck and public submission are separate deliverables.
-
-Assessment data stays private. Publication, deployment, paid services, and submission require approval. No employer code, internal prompts, or credentials are used.
+The input data is not redistributed with this repository.

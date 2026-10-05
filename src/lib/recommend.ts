@@ -73,7 +73,8 @@ type RankKey<T> = (item: T) => [kpi: number, tieBreak: number, id: string];
 // Only absorb floating-point noise, never round impressions before checking a goal.
 const tolerance = (a: number, b: number) =>
   Number.EPSILON * 32 * Math.max(1, Math.abs(a), Math.abs(b));
-const near = (a: number, b: number) => Math.abs(a - b) <= tolerance(a, b);
+export const nearlyEqual = (a: number, b: number) =>
+  Math.abs(a - b) <= tolerance(a, b);
 const atLeast = (a: number, b: number) => a >= b - tolerance(a, b);
 const atMost = (a: number, b: number) => a <= b + tolerance(a, b);
 
@@ -83,7 +84,7 @@ function rank<T>(items: T[], key: RankKey<T>): T[] {
     const [kpiA, tieA, idA] = key(a);
     const [kpiB, tieB, idB] = key(b);
     return (
-      (near(kpiA, kpiB) ? 0 : kpiB - kpiA) ||
+      (nearlyEqual(kpiA, kpiB) ? 0 : kpiB - kpiA) ||
       tieB - tieA ||
       idA.localeCompare(idB)
     );
@@ -217,9 +218,9 @@ function bestPair(
 /** The calculator has no model, I/O, session state, or side effects. */
 export function recommend(input: CompleteBrief, data: Dataset): Recommendation {
   const brief = completeBriefSchema.parse(input);
-  const products = [...data.products.keys()].map((id) =>
-    facts(data, brief, id),
-  );
+  const products = [...data.products.keys()]
+    .sort()
+    .map((id) => facts(data, brief, id));
   const evaluated = products.map((product) => evaluate(brief, product));
   const singles = products.flatMap((product, i) =>
     evaluated[i].eligible
@@ -280,8 +281,8 @@ export function validateRecommendation(result: Recommendation, data: Dataset) {
     );
     if (
       new Set(plan.legs.map((leg) => leg.productId)).size < plan.legs.length ||
-      !near(plan.spend, spend) ||
-      !near(plan.impressions, impressions) ||
+      !nearlyEqual(plan.spend, spend) ||
+      !nearlyEqual(plan.impressions, impressions) ||
       !atMost(spend, brief.budget) ||
       !atLeast(impressions, brief.impressionGoal ?? 0)
     )

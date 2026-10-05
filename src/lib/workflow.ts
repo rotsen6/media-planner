@@ -73,9 +73,14 @@ export function createWorkflow({
   const extract: Node = async ({ request, brief }, config) => {
     if (request.mode !== "chat") return {};
     const output = await model.extract(request.message, brief, config.signal);
-    return { extraction: validateExtraction(output, request.message) };
+    const extraction = validateExtraction(output, request.message);
+    // Field changes take precedence over a question or small-talk classification.
+    if (Object.keys(extraction.patch).length || extraction.issues.length)
+      extraction.intent = "brief";
+    return { extraction };
   };
   const merge: Node = ({ brief, pending, extraction }) => {
+    if (extraction && extraction.intent !== "brief") return {};
     const patch: Record<string, unknown> = {};
     const open = new Set(pending);
     for (const [field, change] of Object.entries(extraction?.patch ?? {})) {
@@ -89,48 +94,33 @@ export function createWorkflow({
     }
     return { brief: mergeBrief(brief, patch), pending: [...open] };
   };
-  const clarify: Node = (state) => {
-    const text = explainClarification({
-      brief: state.brief,
-      changed: Object.keys(state.extraction?.patch ?? {}) as BriefField[],
-      issues: state.extraction?.issues,
-      pending: state.pending,
-      missing: missingFields(state.brief),
-    });
-    return { response: turn(state, "clarification", [text]) };
-  };
-  const calculate: Node = async (state) => {
-    const brief = completeBriefSchema.parse(state.brief);
-    const result = recommend(brief, await loadData());
-    return {
-      response: turn(
-        state,
-        result.status,
-        explainRecommendation(result),
-        result,
-      ),
-    };
-  };
-  // Questions and small talk change nothing: reply from the current brief's evidence.
-  const answer: Node = async (state) => {
+  const respond: Node = async (state) => {
+    const { request, extraction, pending } = state;
     const brief = completeBriefSchema.safeParse(state.brief);
     const result =
-      brief.success && !state.pending.length
+      brief.success && !pending.length
         ? recommend(brief.data, await loadData())
         : null;
-    const needs = explainClarification({
-      brief: state.brief,
-      pending: state.pending,
-      missing: missingFields(state.brief),
-    });
-    const { request } = state;
-    const message = request.mode === "chat" ? request.message : "";
-    const text = explainAnswer(
-      state.extraction?.intent,
-      result,
-      needs,
-      message,
-    );
+    const needs = result
+      ? ""
+      : explainClarification({
+          brief: state.brief,
+          changed: Object.keys(extraction?.patch ?? {}) as BriefField[],
+          issues: extraction?.issues,
+          pending,
+          missing: missingFields(state.brief),
+        });
+    const text =
+      extraction && extraction.intent !== "brief"
+        ? explainAnswer(
+            extraction.intent,
+            result,
+            needs,
+            request.mode === "chat" ? request.message : "",
+          )
+        : result
+          ? explainRecommendation(result)
+          : [needs];
     return {
       response: turn(state, result?.status ?? "clarification", text, result),
     };
@@ -148,37 +138,15 @@ export function createWorkflow({
       },
     })
     .addNode("merge", merge)
-    .addNode("clarify", clarify)
-    .addNode("calculate", calculate)
-    .addNode("answer", answer)
+    .addNode("respond", respond)
     .addConditionalEdges(
       START,
       (s) => (s.request.mode === "chat" ? "extract" : "merge"),
       ["extract", "merge"],
     )
-    // Any field set or flagged makes this a brief turn, whatever intent was reported.
-    .addConditionalEdges(
-      "extract",
-      ({ extraction: e }) =>
-        !e ||
-        e.intent === "brief" ||
-        Object.keys(e.patch).length ||
-        e.issues.length
-          ? "merge"
-          : "answer",
-      ["merge", "answer"],
-    )
-    .addConditionalEdges(
-      "merge",
-      (s) =>
-        missingFields(s.brief).length || s.pending.length
-          ? "clarify"
-          : "calculate",
-      ["clarify", "calculate"],
-    )
-    .addEdge("clarify", END)
-    .addEdge("calculate", END)
-    .addEdge("answer", END)
+    .addEdge("extract", "merge")
+    .addEdge("merge", "respond")
+    .addEdge("respond", END)
     .compile();
 
   return async (

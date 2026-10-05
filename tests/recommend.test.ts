@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { recommend, validateRecommendation } from "../src/lib/recommend";
+import { explainChoice } from "../src/lib/evidence";
 import type { CompleteBrief } from "../src/lib/brief";
 import { syntheticData } from "./fixtures";
 
@@ -45,6 +46,16 @@ describe("decision policy", () => {
     const result = recommend({ ...brief, impressionGoal: 100000 }, data);
     expect(result.recommended?.id).toBe("C"); // Alpha and Gamma tie KPI; Gamma has higher confidence.
     expect(result.recommended?.impressions).toBe(100000);
+    for (const delta of [Number.EPSILON, 5e-10]) {
+      data.benchmarks.get("A:Finance")!.ctr = 0.02 + delta;
+      const ranked = recommend(brief, data);
+      const tied = delta === Number.EPSILON;
+      expect(ranked.recommended?.id).toBe(tied ? "B" : "A");
+      expect(explainChoice(ranked)).toMatch(
+        tied ? /ties.*confidence/ : /lower click-through rate/,
+      );
+      if (!tied) expect(explainChoice(ranked)).not.toContain("ties");
+    }
   });
   it("checks exact boundaries without display rounding", () => {
     expect(
@@ -84,7 +95,7 @@ describe("decision policy", () => {
     expect(result.alternatives).toEqual([]);
     expect(result.evaluatedProducts.every((p) => !p.eligible)).toBe(true);
   });
-  it("maximizes spend when two-product plans have the same blended KPI", () => {
+  it("breaks pair KPI ties by spend, then stable product IDs", () => {
     const data = syntheticData();
     data.benchmarks.forEach((b) => {
       b.ctr = 0.02;
@@ -96,6 +107,23 @@ describe("decision policy", () => {
     );
     expect(result.recommended?.ctr).toBeCloseTo(0.02);
     expect(result.recommended?.spend).toBeCloseTo(3000);
+    data.products.forEach((p) => {
+      p.cpm = 10;
+    });
+    for (const ids of [
+      ["A", "B", "C"],
+      ["B", "A", "C"],
+      ["C", "B", "A"],
+    ]) {
+      const reordered = {
+        ...data,
+        products: new Map(ids.map((id) => [id, data.products.get(id)!])),
+      };
+      expect(
+        recommend({ ...brief, budget: 2000, impressionGoal: 150000 }, reordered)
+          .recommended,
+      ).toMatchObject({ id: "A+B", spend: 2000 });
+    }
   });
   it("does not invent stock when inventory is zero", () => {
     const data = syntheticData();

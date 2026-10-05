@@ -40,7 +40,7 @@ describe.skipIf(!live)("live model", { timeout: 180_000 }, () => {
         status: "clarification",
         missing: [want],
       });
-      // The supplied briefs say a detail is undecided; that is a question, not an invalid value.
+      // These example briefs say a detail is undecided: a question, not an invalid value.
       expect(result.explanation[0]).not.toContain("supported");
     }
   });

@@ -177,13 +177,18 @@ describe("saved conversations", () => {
     expect(first(state).result).toBeNull();
     expect(first(state).error).toBe("");
   });
-  it("keeps a newly typed draft when an earlier turn succeeds or fails", () => {
-    const pending = apply(workspace(), start, draft("Next question"));
-    expect(first(apply(pending, resolve)).composer).toBe("Next question");
-    expect(first(apply(pending, fail("Offline"))).composer).toBe(
-      "Next question",
-    );
-  });
+  it.each([resolve, fail("Offline"), { type: "cancel", id: "first" } as const])(
+    "preserves a new draft on $type and recovers interrupted messages",
+    (action) => {
+      const pending = apply(workspace(), start);
+      expect(
+        first(apply(pending, draft("Next question"), action)).composer,
+      ).toBe("Next question");
+      expect(first(apply(pending, action)).composer).toBe(
+        action.type === "resolve" ? "" : start.message,
+      );
+    },
+  );
   it("restores an interrupted request as a retryable draft without a stale plan", () => {
     const state = apply(workspace(), start);
     const restored = restoreWorkspace(JSON.stringify(state))!;
@@ -274,15 +279,6 @@ describe("saved conversations", () => {
     });
     expect(state.activeId).toBe("replacement");
     expect(historyChats(state)).toEqual([]);
-  });
-  it("restores the last message on stop without erasing a subsequent draft", () => {
-    let state = apply(workspace(), start, { type: "cancel", id: "first" });
-    expect(first(state).composer).toBe(start.message);
-    state = apply(workspace(), start, draft("New draft"), {
-      type: "cancel",
-      id: "first",
-    });
-    expect(first(state).composer).toBe("New draft");
   });
 });
 
