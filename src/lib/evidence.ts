@@ -8,10 +8,13 @@ import {
   type Kpi,
 } from "./brief";
 import {
+  comparePlans,
   nearlyEqual,
   type EvaluatedProduct,
+  type Plan,
   type Recommendation,
 } from "./recommend";
+import type { TurnResponse } from "./contract";
 
 const format = (options: Intl.NumberFormatOptions) =>
   new Intl.NumberFormat("en-US", options).format;
@@ -24,22 +27,54 @@ export const currency = (value: number) =>
   (Number.isInteger(value) ? dollars : cents)(value);
 export const kpiLabel = (kpi: string) =>
   (KPI_LABELS[kpi as Kpi] ?? "").toLowerCase();
+const precisionNote = (chosen: string, other: string) => chosen === other
+  ? "; the difference is below displayed precision" : "";
 /** "a", "a and b", "a, b, and c"; the conjunction can be "or". */
 export const list = (items: readonly string[], conjunction = "and") =>
   items.length < 3
     ? items.join(` ${conjunction} `)
     : `${items.slice(0, -1).join(", ")}, ${conjunction} ${items.at(-1)}`;
 
-export const productReason = (p: EvaluatedProduct) =>
-  ({
-    no_inventory: "No forecast inventory in this vertical and geography.",
-    budget_goal: `Budget buys ${number(p.budgetImpressions)} impressions, below the goal.`,
-    inventory_goal: `Inventory supports ${number(p.availableImpressions)} impressions, below the goal.`,
-    budget_and_inventory_goal:
-      "Both budget-supported impressions and inventory fall below the goal.",
-    eligible:
-      "Meets the constraints; ranked by the primary KPI, then forecast confidence on ties.",
-  })[p.reason];
+export function productReason(p: EvaluatedProduct, goal?: number | null): string {
+  const gap = goal == null ? "" : number(goal - p.deliverableImpressions);
+  const shortfall = goal == null ? "below your impression goal"
+    : `${gap === "0" ? "less than 0.1" : gap} below your ${number(goal)} minimum`;
+  switch (p.reason) {
+    case "no_inventory":
+      return "No forecast inventory in this vertical and geography.";
+    case "budget_goal":
+      return `Your budget buys ${number(p.budgetImpressions)} impressions, ${shortfall}.`;
+    case "inventory_goal":
+      return `Inventory supports ${number(p.availableImpressions)} impressions, ${shortfall}.`;
+    case "budget_and_inventory_goal":
+      return `Your budget buys ${number(p.budgetImpressions)} impressions and inventory supports ${number(p.availableImpressions)}. Delivery is limited to ${number(p.deliverableImpressions)}, ${shortfall}.`;
+    case "eligible":
+      return "Meets the constraints; ranked by historical KPI, forecast confidence, then fixed product ordering.";
+  }
+}
+
+/** The actual ranking decision, including differences concealed by display rounding. */
+export function alternativeReason(
+  result: Recommendation,
+  alternative: Plan | EvaluatedProduct,
+): string {
+  const { brief, recommended: plan, bundleSearchUsed } = result;
+  if (!plan) return "";
+  const otherPlan = "productId" in alternative
+    ? { ...alternative, id: alternative.productId, lowestConfidence: alternative.confidence }
+    : alternative;
+  const kpi = `${bundleSearchUsed ? "blended " : ""}historical ${kpiLabel(brief.kpi)}`;
+  const { criterion } = comparePlans(plan, otherPlan, brief.kpi, bundleSearchUsed);
+  if (criterion === "id")
+    return `The ${kpi} and ${bundleSearchUsed ? "spend" : "forecast confidence"} tie; fixed product ordering selects ${plan.name}.`;
+  const field = criterion === "kpi" ? brief.kpi
+    : bundleSearchUsed ? "spend" : "lowestConfidence";
+  const formatValue = field === "spend" ? cents : percent;
+  const [chosen, other] = [plan, otherPlan].map((p) => formatValue(p[field]));
+  const lower = criterion === "kpi" ? kpi
+    : bundleSearchUsed ? "spend" : "forecast confidence";
+  return `${criterion === "kpi" ? "Lower" : `The ${kpi} ties; lower`} ${lower} (${other} vs ${chosen})${precisionNote(chosen, other)}.`;
+}
 
 const labels: Record<BriefField, string> = {
   clientName: "client name",
@@ -114,31 +149,34 @@ export function explainClarification({
     .join(" ");
 }
 
-const tradeoff = (p: EvaluatedProduct, goal: number) =>
-  ({
-    no_inventory: "it has no forecast inventory in this vertical and geography",
-    budget_goal: `your budget buys only ${number(p.budgetImpressions)} of the ${number(goal)} impressions you need`,
-    inventory_goal: `only ${number(p.availableImpressions)} of the ${number(goal)} impressions you need are available`,
-    budget_and_inventory_goal: `neither your budget nor its inventory reaches ${number(goal)} impressions`,
-    eligible: "",
-  })[p.reason];
-
 export const caveat =
   "Historical benchmarks are not guaranteed outcomes. History is vertical-specific, has no geography or dates, and inventory has no time dimension.";
+/** A bundle leg was selected, even when it could not meet the brief alone. */
+const rejectedOutsidePlan = ({ recommended: plan }: Recommendation, p: EvaluatedProduct) =>
+  plan && !p.eligible && !plan.legs.some((leg) => leg.productId === p.productId);
 /** Products that rate above the plan but could not be used. */
-const outranked = ({
-  brief,
-  recommended: plan,
-  evaluatedProducts,
-}: Recommendation) =>
-  evaluatedProducts.filter(
-    (p) =>
-      plan &&
-      !p.eligible &&
-      p[brief.kpi] > plan[brief.kpi] &&
-      !nearlyEqual(p[brief.kpi], plan[brief.kpi]) &&
-      !plan.legs.some((leg) => leg.productId === p.productId),
-  );
+const rejectedAbovePlan = (
+  result: Recommendation,
+  p: EvaluatedProduct,
+) =>
+  rejectedOutsidePlan(result, p) && result.recommended &&
+  p[result.brief.kpi] > result.recommended[result.brief.kpi] &&
+  !nearlyEqual(p[result.brief.kpi], result.recommended[result.brief.kpi]);
+
+/** Existing evaluation order already puts the strongest rejected product first. */
+export function comparisonCandidate(
+  result: Recommendation,
+): EvaluatedProduct | Plan | undefined {
+  if (!result.recommended) return;
+  return result.evaluatedProducts.find((p) => rejectedOutsidePlan(result, p)) ??
+    result.alternatives[0];
+}
+
+const rejectedReason = ({ brief, recommended }: Recommendation, p: EvaluatedProduct) => {
+  if (!recommended) return "";
+  const shown = percent(p[brief.kpi]);
+  return `${p.name} has a higher historical ${kpiLabel(brief.kpi)} (${shown})${precisionNote(shown, percent(recommended[brief.kpi]))}. ${productReason(p, brief.impressionGoal)}`;
+};
 
 /** The plan message: the pick, and why the top-KPI product lost when it did. */
 export function explainRecommendation(result: Recommendation): string[] {
@@ -152,74 +190,24 @@ export function explainRecommendation(result: Recommendation): string[] {
   const sentences = [
     `${plan.name} is the highest-ranked feasible ${plan.legs.length === 1 ? "single product" : "two-product fallback"}, with a ${percent(plan[brief.kpi])} historical ${kpi} benchmark.`,
   ];
-  const [best] = outranked(result);
-  if (best)
-    sentences.push(
-      `${best.name} has a higher ${kpi} (${percent(best[brief.kpi])}), but ${tradeoff(best, brief.impressionGoal ?? 0)}.`,
-    );
+  const best = comparisonCandidate(result);
+  if (best && "eligible" in best && rejectedAbovePlan(result, best))
+    sentences.push(rejectedReason(result, best));
   return [sentences.join(" "), caveat];
 }
 
-/** Why this plan: what makes it best, what rates higher but does not fit, and what else fits. */
-export function explainChoice(result: Recommendation): string {
-  const { brief, recommended: plan, alternatives } = result;
-  if (!plan) return explainRecommendation(result)[0];
-  const kpi = kpiLabel(brief.kpi);
-  const rate = (p: { ctr: number; inViewRate: number }) =>
-    percent(p[brief.kpi]);
-  const goal = brief.impressionGoal ?? 0;
-  const single = plan.legs.length === 1;
-  const higher = outranked(result);
-  const tied = alternatives.filter((a) =>
-    nearlyEqual(a[brief.kpi], plan[brief.kpi]),
-  );
-  const lower = alternatives.filter((a) => !tied.includes(a));
-  const unused = plan.unspentBudget
-    ? `, leaving ${currency(plan.unspentBudget)} of your budget unused${single ? " because that is all of its inventory here" : ""}`
-    : "";
-  return [
-    single
-      ? `${plan.name} has the highest ${kpi} (${rate(plan)}) of the products that fit your budget${goal ? ` and ${number(goal)}-impression goal` : ""}.`
-      : `No single product reaches ${number(goal)} impressions within your budget and inventory, so ${plan.name} is the pair with the highest blended ${kpi} (${rate(plan)}).`,
-    ...higher.map(
-      (p) => `${p.name} rates higher (${rate(p)}), but ${tradeoff(p, goal)}.`,
-    ),
-    `It buys ${number(plan.impressions)} impressions for ${currency(plan.spend)}${unused}.`,
-    tied.length
-      ? `${list(tied.map((a) => a.name))} ${tied.length > 1 ? "match" : "matches"} its ${kpi}; ties go to ${single ? "higher forecast confidence" : "greater spend"}.`
-      : "",
-    lower.length
-      ? `${list(lower.map((a) => `${a.name} (${rate(a)})`))} also ${lower.length > 1 ? "fit" : "fits"}, but with a lower ${kpi}.`
-      : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-/** Replies to a question or small talk, from the current plan when there is one. */
-export function explainAnswer(
-  intent: string | undefined,
-  result: Recommendation | null,
-  needs: string,
-  message: string,
-): string[] {
-  if (intent === "question")
-    return result
-      ? [explainChoice(result), caveat]
-      : [`I don't have a plan to explain yet. ${needs}`];
-  // Small talk: answer a thank-you or a greeting in kind, then offer the next step.
-  const opener = /\b(thanks|thank you|thank u|thx|ty|cheers|appreciate)/i.test(
-    message,
-  )
-    ? "You're welcome! "
-    : /^\W*(hi|hello|hey|hiya|good (morning|afternoon|evening))\b/i.test(
-          message,
-        )
-      ? "Hi! "
-      : "";
-  return [
-    result
-      ? `${opener}I can explain this plan or change it. Feel free to ask why it was chosen, or tell me what to change.`
-      : `${opener}I build media plans from a campaign brief. ${needs}`,
-  ];
+/** Give the model the same constraint and tie decisions that the UI displays. */
+export function answerEvidence(response: TurnResponse) {
+  const result = response.recommendation;
+  if (!result) return response;
+  return { ...response, recommendation: {
+    ...result,
+    evaluatedProducts: result.evaluatedProducts.map((p) => ({
+      ...p,
+      assessment: !p.eligible ? productReason(p, result.brief.impressionGoal)
+        : p.productId === result.recommended?.id ? "Selected product."
+        : alternativeReason(result, p),
+    })),
+    alternatives: result.alternatives.map((p) => ({ ...p, rankingReason: alternativeReason(result, p) })),
+  } };
 }

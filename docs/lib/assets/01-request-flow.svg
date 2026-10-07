@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="01-request-flow-title 01-request-flow-desc" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
+  <title id="01-request-flow-title">From a message to a visible plan</title>
+  <desc id="01-request-flow-desc">Execution flow · Manual briefs skip extraction; pure questions and small talk get an optional answer.</desc>
+  <rect x="0" y="0" width="1280" height="720" rx="6" fill="#ffffff"/>
+  <defs>
+    <marker id="01-request-flow-muted" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#68768a"/>
+    </marker>
+    <marker id="01-request-flow-blue" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#4878b8"/>
+    </marker>
+    <marker id="01-request-flow-orange" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#b45d14"/>
+    </marker>
+  </defs>
+  <text x="48" y="48" font-size="28" fill="#263343" text-anchor="start" font-weight="500">From a message to a visible plan</text>
+  <text x="48" y="80" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Execution flow · Manual briefs skip extraction; pure questions and small talk get an optional answer.</text>
+  <rect x="632" y="120" width="600" height="340" rx="8" fill="#f7faff" stroke="#4878b8" stroke-width="1.2" stroke-dasharray="8 8"/>
+  <text x="656" y="156" font-size="20" fill="#4878b8" text-anchor="start" font-weight="500">LangGraph · workflow.ts</text>
+  <g data-source="submit" data-target="api" data-kind="flow">
+    <path d="M288 232 L344 232" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
+  </g>
+  <g data-source="api" data-target="extract" data-kind="flow">
+    <path d="M584 232 L656 232" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
+  </g>
+  <g data-source="extract" data-target="merge" data-kind="flow">
+    <path d="M888 232 L944 232" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
+  </g>
+  <g data-source="merge" data-target="respond" data-kind="flow">
+    <path d="M1096 284 L1096 340" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
+  </g>
+  <g data-source="respond" data-target="answer" data-kind="flow">
+    <path d="M944 392 L924 392 Q916 392 916 400 L916 576 Q916 584 908 584 L888 584" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
+  </g>
+  <g data-source="answer" data-target="return" data-kind="flow">
+    <path d="M656 584 L584 584" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
+  </g>
+  <g data-source="return" data-target="present" data-kind="flow">
+    <path d="M344 584 L288 584" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
+  </g>
+  <g data-source="api" data-target="merge" data-kind="branch">
+    <path d="M456 284 L456 308 Q456 316 464 316 L1008 316 Q1016 316 1016 308 L1016 284" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#01-request-flow-muted)"/>
+  </g>
+  <g data-source="respond" data-target="return" data-kind="branch">
+    <path d="M1120 440 L1120 480 Q1120 488 1112 488 L922 488 Q916 500 910 488 L480 488 Q472 488 472 496 L472 532" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#01-request-flow-muted)"/>
+  </g>
+  <rect x="456" y="288" width="144" height="20" rx="0" fill="#ffffff"/>
+  <text x="528.0" y="304" font-size="12" fill="#68768a" text-anchor="middle" font-weight="500">MANUAL BRIEF</text>
+  <rect x="504" y="460" width="112" height="20" rx="0" fill="#ffffff"/>
+  <text x="560.0" y="476" font-size="12" fill="#68768a" text-anchor="middle" font-weight="500">BRIEF TURN</text>
+  <g data-node="submit">
+    <rect x="48" y="184" width="240" height="100" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+    <text x="64" y="216" font-size="24" fill="#263343" text-anchor="start" font-weight="500">1  Submit</text>
+    <text x="64" y="248" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Brief + latest message</text>
+    <text x="64" y="272" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Bounded prior history</text>
+  </g>
+  <g data-node="api">
+    <rect x="344" y="184" width="240" height="100" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+    <text x="360" y="216" font-size="24" fill="#263343" text-anchor="start" font-weight="500">2  Validate request</text>
+    <text x="360" y="248" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">/api/chat + contract.ts</text>
+    <text x="360" y="272" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Inject model and data</text>
+  </g>
+  <g data-node="extract">
+    <rect x="656" y="184" width="232" height="100" rx="6" fill="#fff5e9" stroke="#b45d14" stroke-width="1.2"/>
+    <text x="672" y="216" font-size="24" fill="#263343" text-anchor="start" font-weight="500">3  Extract</text>
+    <text x="672" y="248" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Ollama returns JSON</text>
+    <text x="672" y="272" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Code checks quotes</text>
+  </g>
+  <g data-node="merge">
+    <rect x="944" y="184" width="248" height="100" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+    <text x="960" y="216" font-size="24" fill="#263343" text-anchor="start" font-weight="500">4  Merge</text>
+    <text x="960" y="248" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Apply quoted changes</text>
+    <text x="960" y="272" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Resolve pending fields</text>
+  </g>
+  <g data-node="respond">
+    <rect x="944" y="340" width="248" height="100" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+    <text x="960" y="372" font-size="24" fill="#263343" text-anchor="start" font-weight="500">5  Respond</text>
+    <text x="960" y="404" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Clarify or calculate</text>
+    <text x="960" y="428" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Validated plan + summary</text>
+  </g>
+  <g data-node="answer">
+    <rect x="656" y="532" width="232" height="100" rx="6" fill="#fff5e9" stroke="#b45d14" stroke-width="1.2"/>
+    <text x="672" y="564" font-size="24" fill="#263343" text-anchor="start" font-weight="500">6  Answer if asked</text>
+    <text x="672" y="596" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Ollama uses evidence</text>
+    <text x="672" y="620" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Failure keeps summary</text>
+  </g>
+  <g data-node="return">
+    <rect x="344" y="532" width="240" height="100" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+    <text x="360" y="564" font-size="24" fill="#263343" text-anchor="start" font-weight="500">7  Return result</text>
+    <text x="360" y="596" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Final TurnResponse</text>
+    <text x="360" y="620" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Plan stays code-owned</text>
+  </g>
+  <g data-node="present">
+    <rect x="48" y="532" width="240" height="100" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+    <text x="64" y="564" font-size="24" fill="#263343" text-anchor="start" font-weight="500">8  Reveal and save</text>
+    <text x="64" y="596" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Reveal → pause → resolve</text>
+    <text x="64" y="620" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">1 s for a plan/report</text>
+  </g>
+  <line x1="48" y1="660" x2="1232" y2="660" stroke="#d9e1eb"/>
+  <text x="48" y="684" font-size="16" fill="#4878b8" text-anchor="start" font-weight="400">Blue / neutral: application code</text>
+  <text x="400" y="684" font-size="16" fill="#b45d14" text-anchor="start" font-weight="400">Orange: calls Ollama</text>
+  <text x="704" y="684" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">NDJSON: progress + one final result; no model token stream.</text>
+</svg>

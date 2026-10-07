@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { recommend, validateRecommendation } from "../src/lib/recommend";
-import { explainChoice } from "../src/lib/evidence";
-import type { CompleteBrief } from "../src/lib/brief";
-import { syntheticData } from "./fixtures";
-
-const brief: CompleteBrief = {
-  vertical: "Finance",
-  geo: "US",
-  kpi: "ctr",
-  budget: 1000,
-};
+import {
+  comparePlans,
+  recommend,
+  validateRecommendation,
+} from "../src/lib/recommend";
+import {
+  alternativeReason,
+  comparisonCandidate,
+  explainRecommendation,
+  productReason,
+} from "../src/lib/evidence";
+import { financeBrief as brief, syntheticData } from "./fixtures";
 
 describe("decision policy", () => {
   it("ranks feasible singles by KPI, caps inventory, and discloses unused budget", () => {
@@ -23,6 +24,14 @@ describe("decision policy", () => {
     });
     expect(result.alternatives.map((p) => p.id)).toEqual(["A", "C"]);
     expect(result.bundleSearchUsed).toBe(false);
+    expect(comparisonCandidate(result)).toBe(result.alternatives[0]);
+    expect(alternativeReason(result, result.alternatives[0]))
+      .toMatch(/Lower historical.*2% vs 3%/);
+    const data = syntheticData();
+    data.inventory.get("C:Finance:US")!.available_imps = 0;
+    const rejected = recommend(brief, data);
+    expect(comparisonCandidate(rejected)).toMatchObject({ productId: "C" });
+    expect(explainRecommendation(rejected)[0]).not.toContain("Gamma has a higher");
   });
   it("rejects the best benchmark when CPM makes its impression goal unaffordable", () => {
     const result = recommend(
@@ -35,6 +44,16 @@ describe("decision policy", () => {
       reason: "budget_goal",
       budgetImpressions: 50000,
     });
+    const candidate = result.evaluatedProducts[0];
+    const reason = productReason(candidate, result.brief.impressionGoal);
+    expect(comparisonCandidate(result)).toBe(candidate);
+    expect(reason).toContain("50,000 impressions, 30,000 below your 80,000 minimum");
+    expect(explainRecommendation(result)[0]).toContain(reason);
+    const data = syntheticData();
+    data.benchmarks.get("B:Finance")!.ctr = 0.02 + 5e-10;
+    const precise = recommend({ ...brief, impressionGoal: 80000 }, data);
+    expect(explainRecommendation(precise)[0])
+      .toMatch(/higher historical.*2%.*below displayed precision/);
   });
   it("uses confidence only on KPI ties and does not discount inventory", () => {
     const data = syntheticData();
@@ -51,11 +70,24 @@ describe("decision policy", () => {
       const ranked = recommend(brief, data);
       const tied = delta === Number.EPSILON;
       expect(ranked.recommended?.id).toBe(tied ? "B" : "A");
-      expect(explainChoice(ranked)).toMatch(
-        tied ? /ties.*confidence/ : /lower click-through rate/,
-      );
-      if (!tied) expect(explainChoice(ranked)).not.toContain("ties");
+      if (!tied) {
+        expect(alternativeReason(ranked, ranked.alternatives[0]))
+          .toContain("below displayed precision");
+      }
     }
+    data.benchmarks.get("A:Finance")!.ctr = 0.02;
+    data.inventory.forEach((row) => {
+      row.inventory_risk = 0.7;
+    });
+    const equal = recommend(brief, data);
+    expect(equal.recommended?.id).toBe("A");
+    expect(alternativeReason(equal, equal.alternatives[0]))
+      .toContain("fixed product ordering");
+    data.inventory.get("B:Finance:US")!.inventory_risk += Number.EPSILON;
+    const precise = recommend(brief, data);
+    expect(precise.recommended?.id).toBe("B");
+    expect(alternativeReason(precise, precise.alternatives[0]))
+      .toMatch(/lower forecast confidence.*below displayed precision/);
   });
   it("checks exact boundaries without display rounding", () => {
     expect(
@@ -84,6 +116,12 @@ describe("decision policy", () => {
     expect(result.recommended?.ctr).toBeCloseTo(0.02666666667);
     // Spending the remaining budget on Alpha would lower the requested rate.
     expect(result.recommended?.unspentBudget).toBe(500);
+    // Beta rates above the blend, but is already included rather than rejected.
+    expect(comparisonCandidate(result)).toMatchObject({ productId: "C" });
+    const data = syntheticData();
+    data.products.delete("C");
+    const onlyPair = recommend({ ...brief, budget: 3000, impressionGoal: 150000 }, data);
+    expect(comparisonCandidate(onlyPair)).toBeUndefined();
   });
   it("reports infeasibility if even two products cannot achieve scale", () => {
     const result = recommend(
@@ -94,6 +132,7 @@ describe("decision policy", () => {
     expect(result.recommended).toBeNull();
     expect(result.alternatives).toEqual([]);
     expect(result.evaluatedProducts.every((p) => !p.eligible)).toBe(true);
+    expect(comparisonCandidate(result)).toBeUndefined();
   });
   it("breaks pair KPI ties by spend, then stable product IDs", () => {
     const data = syntheticData();
@@ -107,6 +146,12 @@ describe("decision policy", () => {
     );
     expect(result.recommended?.ctr).toBeCloseTo(0.02);
     expect(result.recommended?.spend).toBeCloseTo(3000);
+    expect(alternativeReason(result, result.alternatives[0])).toContain("lower spend");
+    const precise = { ...result.recommended!, spend: 3000 - Number.EPSILON * 2048 };
+    expect(comparePlans(result.recommended!, precise, brief.kpi, true).order)
+      .toBeLessThan(0);
+    expect(alternativeReason(result, precise))
+      .toMatch(/lower spend.*below displayed precision/);
     data.products.forEach((p) => {
       p.cpm = 10;
     });
@@ -119,10 +164,12 @@ describe("decision policy", () => {
         ...data,
         products: new Map(ids.map((id) => [id, data.products.get(id)!])),
       };
-      expect(
-        recommend({ ...brief, budget: 2000, impressionGoal: 150000 }, reordered)
-          .recommended,
-      ).toMatchObject({ id: "A+B", spend: 2000 });
+      const tied = recommend(
+        { ...brief, budget: 2000, impressionGoal: 150000 }, reordered,
+      );
+      expect(tied.recommended).toMatchObject({ id: "A+B", spend: 2000 });
+      expect(alternativeReason(tied, tied.alternatives[0]))
+        .toContain("fixed product ordering");
     }
   });
   it("does not invent stock when inventory is zero", () => {

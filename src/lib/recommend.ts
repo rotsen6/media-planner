@@ -8,18 +8,25 @@ import {
 import type { Dataset } from "./data";
 
 const POLICY_VERSION = "ceiling-confidence-tie-single-first-v1";
+export const RANKING_POLICY = {
+  singles: "Raw inventory caps delivery. Feasible single products rank by the requested historical KPI, then higher inventory confidence, then fixed product ID ordering. Two-product bundles are considered only when no single product meets a supplied impression goal.",
+  bundles: "Bundles maximize the impression-weighted historical KPI within budget and inventory. Equal-KPI bundles prefer greater planned spend, then fixed product ID ordering; inventory confidence is not a bundle tie-breaker. Product impressions are added; they are not deduplicated audience reach.",
+};
 const amount = z.number().finite().nonnegative();
 const rate = amount.max(1);
 const rates = { ctr: rate, inViewRate: rate };
-const legSchema = z.object({
+const productFields = {
   productId: z.string(),
   name: z.string(),
   cpm: amount.positive(),
-  impressions: amount.positive(),
-  spend: amount,
   availableImpressions: amount,
   confidence: rate,
   ...rates,
+};
+const legSchema = z.object({
+  ...productFields,
+  impressions: amount.positive(),
+  spend: amount,
   historyImpressions: amount.positive(),
   historyClicks: amount,
   historyViewableImpressions: amount,
@@ -36,13 +43,8 @@ const planSchema = z.object({
   lowestConfidence: rate,
 });
 const evaluatedSchema = z.object({
-  productId: z.string(),
-  name: z.string(),
-  cpm: amount.positive(),
-  ...rates,
-  confidence: rate,
+  ...productFields,
   budgetImpressions: amount,
-  availableImpressions: amount,
   deliverableImpressions: amount,
   spend: amount,
   eligible: z.boolean(),
@@ -68,7 +70,7 @@ export type Plan = z.infer<typeof planSchema>;
 export type Recommendation = z.infer<typeof recommendationSchema>;
 export type EvaluatedProduct = z.infer<typeof evaluatedSchema>;
 type Facts = ReturnType<typeof facts>;
-type RankKey<T> = (item: T) => [kpi: number, tieBreak: number, id: string];
+type RankValues = [kpi: number, tieBreak: number, id: string];
 
 // Only absorb floating-point noise, never round impressions before checking a goal.
 const tolerance = (a: number, b: number) =>
@@ -78,17 +80,21 @@ export const nearlyEqual = (a: number, b: number) =>
 const atLeast = (a: number, b: number) => a >= b - tolerance(a, b);
 const atMost = (a: number, b: number) => a <= b + tolerance(a, b);
 
-/** Higher KPI first (float noise is a tie), then the higher tie-break, then the stable ID. */
-function rank<T>(items: T[], key: RankKey<T>): T[] {
-  return items.sort((a, b) => {
-    const [kpiA, tieA, idA] = key(a);
-    const [kpiB, tieB, idB] = key(b);
-    return (
-      (nearlyEqual(kpiA, kpiB) ? 0 : kpiB - kpiA) ||
-      tieB - tieA ||
-      idA.localeCompare(idB)
-    );
-  });
+/** Keep the deciding criterion with the ordering so explanations follow the same policy. */
+function compareRank([kpiA, tieA, idA]: RankValues, [kpiB, tieB, idB]: RankValues) {
+  if (!nearlyEqual(kpiA, kpiB))
+    return { order: kpiB - kpiA, criterion: "kpi" as const };
+  if (tieA !== tieB)
+    return { order: tieB - tieA, criterion: "secondary" as const };
+  return { order: idA.localeCompare(idB), criterion: "id" as const };
+}
+
+type RankedPlan = Pick<Plan, "id" | "ctr" | "inViewRate" | "spend" | "lowestConfidence">;
+export function comparePlans(a: RankedPlan, b: RankedPlan, kpi: Kpi, bundle: boolean) {
+  return compareRank(
+    [a[kpi], bundle ? a.spend : a.lowestConfidence, a.id],
+    [b[kpi], bundle ? b.spend : b.lowestConfidence, b.id],
+  );
 }
 
 /** One product's catalog row, vertical benchmark, and vertical/geo inventory. */
@@ -183,7 +189,7 @@ function bestPair(
   brief: CompleteBrief,
   a: Facts,
   b: Facts,
-  key: RankKey<Plan>,
+  compare: (a: Plan, b: Plan) => number,
 ): Plan | undefined {
   const goal = brief.impressionGoal ?? 0;
   const [costA, costB] = [a.cpm / 1000, b.cpm / 1000];
@@ -212,7 +218,7 @@ function bestPair(
       return feasible ? [makePlan(brief, [a, x], [b, y])] : [];
     }),
   );
-  return rank(vertices, key)[0];
+  return vertices.sort(compare)[0];
 }
 
 /** The calculator has no model, I/O, session state, or side effects. */
@@ -229,21 +235,17 @@ export function recommend(input: CompleteBrief, data: Dataset): Recommendation {
   );
   // Pairs are considered only when no single product meets a supplied goal.
   const bundleSearchUsed = !singles.length && !!brief.impressionGoal;
-  const key: RankKey<Plan> = (plan) => [
-    plan[brief.kpi],
-    bundleSearchUsed ? plan.spend : plan.lowestConfidence,
-    plan.id,
-  ];
-  const candidates = rank(
+  const compare = (a: Plan, b: Plan) =>
+    comparePlans(a, b, brief.kpi, bundleSearchUsed).order;
+  const candidates = (
     bundleSearchUsed
       ? products.flatMap((a, i) =>
           products
             .slice(i + 1)
-            .flatMap((b) => bestPair(brief, a, b, key) ?? []),
+            .flatMap((b) => bestPair(brief, a, b, compare) ?? []),
         )
-      : singles,
-    key,
-  );
+      : singles
+  ).sort(compare);
   const result = recommendationSchema.parse({
     status: candidates.length ? "ready" : "infeasible",
     brief,
@@ -251,11 +253,12 @@ export function recommend(input: CompleteBrief, data: Dataset): Recommendation {
     policyVersion: POLICY_VERSION,
     recommended: candidates[0] ?? null,
     alternatives: candidates.slice(1, 3),
-    evaluatedProducts: rank(evaluated, (p) => [
-      p[brief.kpi],
-      p.confidence,
-      p.productId,
-    ]),
+    evaluatedProducts: evaluated.sort((a, b) =>
+      compareRank(
+        [a[brief.kpi], a.confidence, a.productId],
+        [b[brief.kpi], b.confidence, b.productId],
+      ).order,
+    ),
     bundleSearchUsed,
   });
   validateRecommendation(result, data);

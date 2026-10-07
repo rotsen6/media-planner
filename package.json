@@ -13,7 +13,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test && npm run build",
-    "test:live": "LIVE=1 vitest run tests/live.test.ts --reporter=verbose"
+    "test:live": "LIVE=1 vitest run tests/live.test.ts --reporter=verbose",
+    "bench:latency": "BENCH=1 vitest run bench/latency.test.ts --reporter=verbose"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.4.18",

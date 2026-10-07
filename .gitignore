@@ -2,8 +2,7 @@ node_modules/
 .next/
 .env*
 next-env.d.ts
-# Input data and reference material are not redistributed.
-data/private/
+# Local reference material.
 reference/
 .DS_Store
 *.tsbuildinfo

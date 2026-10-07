@@ -10,16 +10,15 @@ import { number } from "./evidence";
 import {
   pendingFieldsSchema,
   turnResponseSchema,
+  turnStageSchema,
   type TurnResponse,
+  type TurnStage,
 } from "./contract";
 
 export const HISTORY_KEY = "kargo.media-planner.v1";
 const FIELDS = briefFieldSchema.options;
 const formSchema = z.record(briefFieldSchema, z.string());
 export type FormBrief = z.infer<typeof formSchema>;
-const emptyForm = Object.fromEntries(
-  FIELDS.map((key) => [key, ""]),
-) as FormBrief;
 export const formFromBrief = (brief: Brief) =>
   Object.fromEntries(
     FIELDS.map((key) => [key, brief[key]?.toString() ?? ""]),
@@ -61,6 +60,7 @@ const storedChatSchema = z.object({
       id: z.string(),
       mode: z.enum(["chat", "brief"]),
       message: z.string(),
+      stage: turnStageSchema.optional(),
     })
     .nullable(),
   error: z.string(),
@@ -88,7 +88,7 @@ export const emptyWorkspace: WorkspaceState = {
 export const newConversation = (id: string, now: number): Conversation => ({
   id,
   updatedAt: now,
-  form: { ...emptyForm },
+  form: formFromBrief({}),
   composer: "",
   messages: [],
   pending: [],
@@ -121,6 +121,10 @@ export function chatSubtitle(chat: Conversation) {
 }
 export const historyChats = (state: WorkspaceState) =>
   state.chats.filter(hasContent).sort((a, b) => b.updatedAt - a.updatedAt);
+export const replyText = (response: TurnResponse) =>
+  response.status === "ready"
+    ? (response.explanation[0] ?? "")
+    : response.explanation.join("\n\n");
 /** The transcript line for a calculation started from the brief editor. */
 export const briefMessage = (f: FormBrief) =>
   [
@@ -215,6 +219,12 @@ type ChatAction =
       mode: "chat" | "brief";
       message: string;
       now: number;
+    }
+  | {
+      type: "progress";
+      id: string;
+      requestId: string;
+      stage: TurnStage;
     }
   | {
       type: "resolve";
@@ -320,6 +330,7 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
       return {
         ...chat,
         result: null,
+        planOpen: false,
         dirty: false,
         error: "",
         updatedAt: action.now,
@@ -328,6 +339,7 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
           id: action.requestId,
           mode: action.mode,
           message: action.message,
+          stage: action.mode === "chat" ? "extract" : "validate",
         },
         messages: [
           ...chat.messages,
@@ -338,16 +350,17 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
           },
         ],
       };
+    case "progress":
+      return chat.request?.id === action.requestId &&
+        chat.request.stage !== action.stage
+        ? { ...chat, request: { ...chat.request, stage: action.stage } }
+        : chat;
     case "resolve": {
       // Late answers to a stopped, edited, or replaced request are ignored.
       if (chat.request?.id !== action.requestId) return chat;
       const next = action.response;
       // Only a changed brief makes earlier plan messages stale.
       const revision = chat.revision + (sameBrief(chat.form, next) ? 0 : 1);
-      const text =
-        next.status === "ready"
-          ? next.explanation[0]
-          : next.explanation.join("\n\n");
       return {
         ...chat,
         form: formFromBrief(next.brief),
@@ -365,7 +378,7 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
           {
             id: `${action.requestId}:assistant`,
             role: "assistant",
-            text,
+            text: replyText(next),
             ...(next.recommendation ? { basedOnRevision: revision } : {}),
           },
         ],

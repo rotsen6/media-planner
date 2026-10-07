@@ -1,11 +1,9 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadDataset, loadExampleBriefs } from "../src/lib/data";
 import { recommend } from "../src/lib/recommend";
 import type { CompleteBrief } from "../src/lib/brief";
 
-// Regression expectations for the real dataset, which is not part of the repository.
+// Regression expectations for the supplied dataset.
 const brief = (
   vertical: CompleteBrief["vertical"],
   geo: CompleteBrief["geo"],
@@ -26,9 +24,8 @@ const cases = [
   },
 ];
 
-const dataDir = process.env.DATA_DIR ?? "data/private";
-describe.skipIf(!existsSync(resolve(dataDir, "product_catalog.csv")))(
-  "real dataset (local only)",
+describe(
+  "supplied dataset",
   () => {
     it("validates all supplied rows and balanced history", async () => {
       const data = await loadDataset();

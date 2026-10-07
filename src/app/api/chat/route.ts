@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { readText } from "@/lib/contract";
+import { readText, turnRequestSchema, type TurnEvent } from "@/lib/contract";
 import { loadDataset } from "@/lib/data";
 import { createOllamaModel } from "@/lib/model";
 import { createWorkflow } from "@/lib/workflow";
@@ -27,7 +27,42 @@ export async function POST(request: Request) {
   if (!request.headers.get("content-type")?.includes("application/json"))
     return reject("Expected JSON", 415);
   try {
-    const input = JSON.parse(await readText(request.body, 16_384));
+    const input = turnRequestSchema.parse(
+      JSON.parse(await readText(request.body, 64_000)),
+    );
+    if (request.headers.get("accept")?.includes("application/x-ndjson")) {
+      const cancelled = new AbortController();
+      const signal = AbortSignal.any([request.signal, cancelled.signal]);
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const send = (event: TurnEvent) => {
+            if (!signal.aborted)
+              controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+          };
+          try {
+            const response = await workflow(input, signal, (stage) =>
+              send({ type: "progress", stage }),
+            );
+            if (!cancelled.signal.aborted) {
+              send({ type: "result", response });
+              controller.close();
+            }
+          } catch (error) {
+            if (!cancelled.signal.aborted) controller.error(error);
+          }
+        },
+        cancel(reason) {
+          cancelled.abort(reason);
+        },
+      });
+      return new Response(body, {
+        headers: {
+          "Content-Type": "application/x-ndjson",
+          "Cache-Control": "no-store, no-transform",
+        },
+      });
+    }
     const response = await workflow(input, request.signal);
     return Response.json(response, {
       status: response.status === "error" ? 503 : 200,

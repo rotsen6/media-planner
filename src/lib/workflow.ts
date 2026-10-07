@@ -15,7 +15,7 @@ import {
 } from "./brief";
 import type { Dataset } from "./data";
 import {
-  explainAnswer,
+  answerEvidence,
   explainClarification,
   explainRecommendation,
 } from "./evidence";
@@ -23,8 +23,6 @@ import {
   extractionSchema,
   ModelError,
   modelErrors,
-  ollamaConfig,
-  validateExtraction,
   type LanguageModel,
 } from "./model";
 import { recommend, type Recommendation } from "./recommend";
@@ -34,6 +32,7 @@ import {
   turnResponseSchema,
   type TurnRequest,
   type TurnResponse,
+  type TurnStage,
 } from "./contract";
 
 const State = new StateSchema({
@@ -46,7 +45,7 @@ const State = new StateSchema({
 type Node = GraphNode<typeof State>;
 type Turn = { request: TurnRequest; brief: Brief; pending: BriefField[] };
 
-/** Every answer carries the canonical brief, its open questions, and whether the model ran. */
+/** Every answer carries the canonical brief, its open questions, and model status. */
 const turn = (
   { request, brief, pending }: Turn,
   status: TurnResponse["status"],
@@ -72,8 +71,7 @@ export function createWorkflow({
 }) {
   const extract: Node = async ({ request, brief }, config) => {
     if (request.mode !== "chat") return {};
-    const output = await model.extract(request.message, brief, config.signal);
-    const extraction = validateExtraction(output, request.message);
+    const extraction = await model.extract(request.message, brief, config.signal);
     // Field changes take precedence over a question or small-talk classification.
     if (Object.keys(extraction.patch).length || extraction.issues.length)
       extraction.intent = "brief";
@@ -95,48 +93,27 @@ export function createWorkflow({
     return { brief: mergeBrief(brief, patch), pending: [...open] };
   };
   const respond: Node = async (state) => {
-    const { request, extraction, pending } = state;
+    const { extraction, pending } = state;
     const brief = completeBriefSchema.safeParse(state.brief);
     const result =
       brief.success && !pending.length
         ? recommend(brief.data, await loadData())
         : null;
-    const needs = result
-      ? ""
-      : explainClarification({
+    const text = result
+      ? explainRecommendation(result)
+      : [explainClarification({
           brief: state.brief,
           changed: Object.keys(extraction?.patch ?? {}) as BriefField[],
           issues: extraction?.issues,
           pending,
           missing: missingFields(state.brief),
-        });
-    const text =
-      extraction && extraction.intent !== "brief"
-        ? explainAnswer(
-            extraction.intent,
-            result,
-            needs,
-            request.mode === "chat" ? request.message : "",
-          )
-        : result
-          ? explainRecommendation(result)
-          : [needs];
+        })];
     return {
       response: turn(state, result?.status ?? "clarification", text, result),
     };
   };
   const graph = new StateGraph(State)
-    .addNode("extract", extract, {
-      timeout: ollamaConfig.timeoutMs + 2_000,
-      retryPolicy: {
-        maxAttempts: 2,
-        initialInterval: 250,
-        jitter: false,
-        logWarning: false,
-        retryOn: (error: unknown) =>
-          error instanceof ModelError && error.retryable,
-      },
-    })
+    .addNode("extract", extract)
     .addNode("merge", merge)
     .addNode("respond", respond)
     .addConditionalEdges(
@@ -152,19 +129,49 @@ export function createWorkflow({
   return async (
     input: unknown,
     signal?: AbortSignal,
+    onProgress?: (stage: TurnStage) => void,
   ): Promise<TurnResponse> => {
     const request = turnRequestSchema.parse(input);
     const pending = request.mode === "chat" ? request.pending : [];
     const deadline = AbortSignal.timeout(85_000);
+    const operation = signal ? AbortSignal.any([signal, deadline]) : deadline;
     try {
-      const state = await graph.invoke(
+      onProgress?.(request.mode === "chat" ? "extract" : "validate");
+      const updates = await graph.stream(
         { request, brief: request.brief, pending },
         {
           recursionLimit: 12,
-          signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
+          signal: operation,
+          streamMode: "updates",
         },
       );
-      return turnResponseSchema.parse(state.response);
+      let response: TurnResponse | null = null;
+      let shouldAnswer = false;
+      for await (const update of updates) {
+        if ("extract" in update) {
+          onProgress?.("validate");
+          shouldAnswer = ["question", "other"].includes(update.extract?.extraction?.intent ?? "");
+        }
+        if ("merge" in update) onProgress?.("respond");
+        if ("respond" in update) response = update.respond?.response ?? null;
+      }
+      const verified = turnResponseSchema.parse(response);
+      if (request.mode !== "chat" || !shouldAnswer) return verified;
+      // Answer after calculation, so a generation timeout cannot discard the verified plan.
+      try {
+        operation.throwIfAborted();
+        const text = await model.answer(request.message, answerEvidence(verified), request.history, operation);
+        operation.throwIfAborted();
+        return { ...verified, explanation: [text, ...verified.explanation.slice(1)] };
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        return {
+          ...verified,
+          modelStatus: "unavailable",
+          errorCode: error instanceof ModelError ? error.code : operation.aborted ? "timeout" : "internal",
+          explanation: [`I couldn't generate a tailored reply. ${verified.explanation[0]}`, ...verified.explanation.slice(1)],
+        };
+      }
     } catch (error) {
       const code =
         error instanceof ModelError

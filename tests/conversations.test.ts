@@ -12,15 +12,9 @@ import {
 } from "../src/lib/conversations";
 import { recommend } from "../src/lib/recommend";
 import type { TurnResponse } from "../src/lib/contract";
-import { syntheticData } from "./fixtures";
+import { financeBrief, syntheticData } from "./fixtures";
 
-const brief = {
-  clientName: "First campaign",
-  vertical: "Finance",
-  geo: "US",
-  kpi: "ctr",
-  budget: 1000,
-} as const;
+const brief = { ...financeBrief, clientName: "First campaign" };
 const result: TurnResponse = {
   status: "ready",
   brief,
@@ -30,13 +24,14 @@ const result: TurnResponse = {
   recommendation: recommend(brief, syntheticData()),
   explanation: ["A verified recommendation."],
 };
-function workspace(): WorkspaceState {
+function workspace(...actions: WorkspaceAction[]): WorkspaceState {
   const chat = newConversation("first", 1);
-  return { ...emptyWorkspace, activeId: chat.id, chats: [chat] };
+  return apply({ ...emptyWorkspace, activeId: chat.id, chats: [chat] }, ...actions);
 }
 function apply(state: WorkspaceState, ...actions: WorkspaceAction[]) {
   return actions.reduce(workspaceReducer, state);
 }
+const restoreSaved = (state: unknown) => restoreWorkspace(JSON.stringify(state))!;
 const start: WorkspaceAction = {
   type: "start",
   id: "first",
@@ -71,11 +66,16 @@ const fail = (error: string): WorkspaceAction => ({
   error,
   now: 5,
 });
+const progress: WorkspaceAction = {
+  type: "progress",
+  id: "first",
+  requestId: "request-1",
+  stage: "respond",
+};
 
 describe("saved conversations", () => {
   it("preserves each chat's brief, messages, plan and unsent draft when switching", () => {
-    const state = apply(
-      workspace(),
+    const state = workspace(
       start,
       resolve,
       draft("Make it $2,000"),
@@ -100,7 +100,7 @@ describe("saved conversations", () => {
     expect(state.chats[1].result).toBeNull();
   });
   it("reuses a pristine new chat and never accumulates empty history entries", () => {
-    let state = apply(workspace(), newChat("unused"));
+    let state = workspace(newChat("unused"));
     expect(state.chats).toHaveLength(1);
     expect(state.activeId).toBe("first");
     expect(historyChats(state)).toHaveLength(0);
@@ -114,19 +114,32 @@ describe("saved conversations", () => {
     expect(historyChats(state)).toHaveLength(1);
     expect(state.activeId).toBe("second");
   });
-  it("routes an in-flight result to its original chat after navigation", () => {
-    const state = apply(workspace(), start, newChat("second"), resolve);
+  it("routes streamed progress and the final result to the original chat after navigation", () => {
+    const pending = workspace(start, newChat("second"));
+    const updated = apply(pending, progress);
+    expect(first(updated)).toEqual({
+      ...first(pending),
+      request: { ...first(pending).request, stage: "respond" },
+    });
+    expect(updated.chats[1]).toBe(pending.chats[1]);
+    expect(first(updated).planOpen).toBe(false);
+    expect(first(updated).result).toBeNull();
+    expect(first(updated).messages).toHaveLength(1);
+    const state = apply(updated, resolve, progress);
     expect(state.activeId).toBe("second");
     expect(first(state).result).toEqual(result);
+    expect(first(state).request).toBeNull();
+    expect(first(state).planOpen).toBe(true);
+    expect(first(state).messages.at(-1)?.text).toBe("A verified recommendation.");
     expect(state.chats[1].messages).toEqual([]);
   });
   it("invalidates a plan immediately on edit and ignores the obsolete response", () => {
-    const state = apply(
-      workspace(),
+    const state = workspace(
       start,
       resolve,
       { ...start, requestId: "request-2", now: 4 },
       { type: "edit", id: "first", field: "budget", value: "2000", now: 5 },
+      { ...progress, requestId: "request-2" },
       { ...resolve, requestId: "request-2", now: 6 },
     );
     expect(first(state)).toMatchObject({
@@ -147,7 +160,9 @@ describe("saved conversations", () => {
       message: "Why?",
       now: 4,
     };
-    let state = apply(workspace(), start, resolve, question, {
+    const pending = workspace(start, resolve, question);
+    expect(first(pending).planOpen).toBe(false);
+    let state = apply(pending, {
       ...resolve,
       requestId: "request-2",
       now: 5,
@@ -164,23 +179,29 @@ describe("saved conversations", () => {
     });
     expect(first(state).revision).toBe(2);
   });
-  it("ignores a late completion or failure from an older request", () => {
+  it("ignores late progress, completion or failure from an older request", () => {
+    const stopped = workspace(start, {
+      type: "cancel", id: "first",
+    });
+    expect(first(apply(stopped, progress))).toBe(first(stopped));
     const state = apply(
-      workspace(),
-      start,
-      { type: "cancel", id: "first" },
+      stopped,
       { ...start, requestId: "request-2", now: 4 },
+      progress,
       resolve,
       fail("Old failure"),
     );
-    expect(first(state).request?.id).toBe("request-2");
+    expect(first(state).request).toMatchObject({
+      id: "request-2",
+      stage: "extract",
+    });
     expect(first(state).result).toBeNull();
     expect(first(state).error).toBe("");
   });
   it.each([resolve, fail("Offline"), { type: "cancel", id: "first" } as const])(
     "preserves a new draft on $type and recovers interrupted messages",
     (action) => {
-      const pending = apply(workspace(), start);
+      const pending = workspace(start);
       expect(
         first(apply(pending, draft("Next question"), action)).composer,
       ).toBe("Next question");
@@ -190,8 +211,7 @@ describe("saved conversations", () => {
     },
   );
   it("restores an interrupted request as a retryable draft without a stale plan", () => {
-    const state = apply(workspace(), start);
-    const restored = restoreWorkspace(JSON.stringify(state))!;
+    const restored = restoreSaved(workspace(start));
     expect(first(restored)).toMatchObject({
       request: null,
       result: null,
@@ -199,16 +219,16 @@ describe("saved conversations", () => {
       composer: "Finance in the US, $1000, CTR",
     });
     expect(first(restored).error).toContain("interrupted");
+    expect(first(restored).messages).toHaveLength(1);
   });
   it("restores results, pending questions, drafts and preferences", () => {
-    const state = apply(
-      workspace(),
+    const state = workspace(
       start,
       resolve,
       { type: "sidebar", open: false },
       draft("Keep this draft"),
     );
-    expect(restoreWorkspace(JSON.stringify(state))).toEqual(state);
+    expect(restoreSaved(state)).toEqual(state);
     const clarification: TurnResponse = {
       ...result,
       status: "clarification",
@@ -217,42 +237,34 @@ describe("saved conversations", () => {
       missing: ["geo", "budget", "kpi"],
       pending: ["impressionGoal"],
     };
-    const clarifying = apply(workspace(), start, {
+    const clarifying = workspace(start, {
       ...resolve,
       response: clarification,
     });
-    expect(
-      first(restoreWorkspace(JSON.stringify(clarifying))!).pending,
-    ).toEqual(["impressionGoal"]);
+    expect(first(restoreSaved(clarifying)).pending).toEqual(["impressionGoal"]);
   });
   it("rejects corrupt or unsupported stores instead of silently replacing them", () => {
     expect(restoreWorkspace(null)).toBeNull();
     expect(() => restoreWorkspace("invalid json")).toThrow();
-    expect(() =>
-      restoreWorkspace(JSON.stringify({ ...workspace(), version: 2 })),
-    ).toThrow();
+    expect(() => restoreSaved({ ...workspace(), version: 2 })).toThrow();
     const state = workspace();
     state.chats.push(state.chats[0]);
-    expect(() => restoreWorkspace(JSON.stringify(state))).toThrow(
-      "Duplicate chat IDs",
-    );
+    expect(() => restoreSaved(state)).toThrow("Duplicate chat IDs");
   });
   it("discards invalid or mismatched saved results while preserving the brief and chat", () => {
-    const state = apply(workspace(), start, resolve);
+    const state = workspace(start, resolve);
     state.chats[0].form.budget = "2000";
-    expect(first(restoreWorkspace(JSON.stringify(state))!)).toMatchObject({
+    expect(first(restoreSaved(state))).toMatchObject({
       result: null,
       dirty: true,
       form: { budget: "2000" },
     });
-    const invalid = JSON.parse(
-      JSON.stringify(apply(workspace(), start, resolve)),
-    );
+    const invalid = JSON.parse(JSON.stringify(workspace(start, resolve)));
     invalid.chats[0].result.recommendation.recommended.ctr = "invented";
-    expect(first(restoreWorkspace(JSON.stringify(invalid))!).result).toBeNull();
+    expect(first(restoreSaved(invalid)).result).toBeNull();
   });
   it("invalidates persisted plans when source evidence changes", () => {
-    const state = apply(workspace(), start, resolve);
+    const state = workspace(start, resolve);
     expect(
       apply(state, {
         type: "evidence",
@@ -264,7 +276,7 @@ describe("saved conversations", () => {
     expect(first(changed).error).toContain("source data has changed");
   });
   it("removes only the selected chat and chooses another or a fresh draft", () => {
-    let state = apply(workspace(), start, resolve, newChat("second"));
+    let state = workspace(start, resolve, newChat("second"));
     state = apply(state, {
       type: "remove",
       id: "second",
@@ -305,7 +317,7 @@ describe("debounced workspace saves", () => {
   it("flushes before leaving and cancels the delayed duplicate write", () => {
     const write = vi.fn();
     const saver = createWorkspaceSaver(write);
-    const state = apply(workspace(), start, resolve);
+    const state = workspace(start, resolve);
     saver.schedule(state);
     saver.flush();
     saver.flush();
@@ -320,7 +332,7 @@ describe("debounced workspace saves", () => {
     expect(write).not.toHaveBeenCalled();
     saver.schedule(workspace());
     saver.flush();
-    const next = apply(workspace(), start);
+    const next = workspace(start);
     saver.schedule(next);
     vi.advanceTimersByTime(300);
     expect(write).toHaveBeenCalledTimes(2);

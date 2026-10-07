@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { TURN_STAGE_LABELS } from "@/lib/contract";
 import {
   chatSubtitle,
   chatTitle,
@@ -9,7 +10,7 @@ import {
 } from "@/lib/conversations";
 import { Icon } from "./icons";
 import { PlanPanel } from "./plan-panel";
-import { useConversations } from "./use-conversations";
+import { useConversations, type ReplyDisplay } from "./use-conversations";
 
 type Status = {
   data: { ready: boolean; version?: string };
@@ -80,7 +81,7 @@ function ChatNavigation({
         )}
       </div>
       <div className="history-scroll">
-        {chats.length > 0 && <p className="nav-label">Recent chats</p>}
+        {chats.length > 0 && <p className="nav-label">History</p>}
         {matches.map((chat) => {
           const title = chatTitle(chat);
           const active = chat.id === activeId;
@@ -157,16 +158,46 @@ function MobileHistory({
   );
 }
 
+/** Only this temporary message rerenders as each character arrives. */
+function PendingReply({ request, ref, onReveal }: {
+  request: NonNullable<Conversation["request"]>;
+  ref: React.Ref<ReplyDisplay>;
+  onReveal: () => void;
+}) {
+  const [text, setText] = useState<string>();
+  useImperativeHandle(ref, () => ({ requestId: request.id, show: setText }), [request.id]);
+  useEffect(onReveal, [text, onReveal]);
+  return text !== undefined ? (
+    <>
+      <article className="message assistant revealing" aria-hidden="true">
+        <span className="message-author">Kargo</span>
+        <p>{text}</p>
+      </article>
+      <p className="sr-only" role="status">Writing response…</p>
+    </>
+  ) : (
+    <p className="working" role="status">
+      <span />
+      {TURN_STAGE_LABELS[request.stage ?? (request.mode === "chat" ? "extract" : "validate")]}
+    </p>
+  );
+}
+
 function Messages({
   chat,
   openPlan,
+  replyRef,
 }: {
   chat: Conversation;
   openPlan: () => void;
+  replyRef: React.Ref<ReplyDisplay>;
 }) {
   const log = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
   const shown = useRef<string | null>(null);
+  const followToEnd = useCallback(() => {
+    if (follow.current && log.current) log.current.scrollTop = log.current.scrollHeight;
+  }, []);
   const latest = chat.messages.findLast(
     (m) => m.basedOnRevision === chat.revision,
   )?.id;
@@ -174,9 +205,8 @@ function Messages({
   useEffect(() => {
     if (shown.current !== chat.id) follow.current = true;
     shown.current = chat.id;
-    if (follow.current && log.current)
-      log.current.scrollTop = log.current.scrollHeight;
-  }, [chat.id, chat.messages.length, chat.request]);
+    followToEnd();
+  }, [chat.id, chat.messages.length, chat.request, followToEnd]);
   return (
     <div
       className="conversation-scroll"
@@ -229,12 +259,7 @@ function Messages({
               </article>
             ))}
             {chat.request && (
-              <p className="working" role="status">
-                <span />
-                {chat.request.mode === "brief"
-                  ? "Calculating your plan…"
-                  : "Working on your brief…"}
-              </p>
+              <PendingReply key={chat.request.id} request={chat.request} ref={replyRef} onReveal={followToEnd} />
             )}
           </div>
         </div>
@@ -274,7 +299,7 @@ function SetupNote({ onVersion }: { onVersion: (version: string) => void }) {
     <div className="connection-note">
       <span>
         {noData
-          ? "Campaign data needs to be added before calculating."
+          ? "The bundled campaign data could not be loaded."
           : failed
             ? "Connection status is unavailable."
             : "Chat is offline. You can still enter details manually."}
@@ -287,8 +312,8 @@ function SetupNote({ onVersion }: { onVersion: (version: string) => void }) {
         <div>
           {noData ? (
             <>
-              Extract the four data files into <code>data/private/</code> as the
-              README shows, then restart.
+              Restore the supplied files in <code>data/private/</code> or check
+              your <code>DATA_DIR</code> setting, then restart.
             </>
           ) : (
             <>
@@ -308,7 +333,7 @@ function SetupNote({ onVersion }: { onVersion: (version: string) => void }) {
 }
 
 export default function Workspace({ examples }: { examples: string[] }) {
-  const { state, chat, hydrated, storageNotice, dispatch, ...actions } =
+  const { state, chat, hydrated, storageNotice, dispatch, replyRef, ...actions } =
     useConversations();
   const [mobile, setMobile] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -464,7 +489,7 @@ export default function Workspace({ examples }: { examples: string[] }) {
               </p>
             ) : (
               <>
-                <Messages chat={chat} openPlan={openPlan} />
+                <Messages chat={chat} openPlan={openPlan} replyRef={replyRef} />
                 <div className="composer-area">
                   {chat.error && (
                     <p className="inline-error" role="alert">
@@ -491,10 +516,10 @@ export default function Workspace({ examples }: { examples: string[] }) {
                       aria-label="Message"
                       placeholder={
                         chat.messages.length
-                          ? "Refine your brief or ask a follow-up…"
+                          ? "Refine your brief or ask why…"
                           : "Describe your campaign…"
                       }
-                      rows={2}
+                      rows={1}
                       maxLength={4000}
                       value={chat.composer}
                       onChange={(event) => draft(event.target.value)}
@@ -510,35 +535,25 @@ export default function Workspace({ examples }: { examples: string[] }) {
                         }
                       }}
                     />
-                    <div className="composer-bottom">
-                      <span className="composer-hint">
-                        {chat.composer.length > 3600
-                          ? `${chat.composer.length} / 4,000`
-                          : "A little context is enough to start"}
-                      </span>
-                      {chat.request ? (
-                        <button
-                          className="send-button"
-                          type="button"
-                          aria-label="Stop response"
-                          title="Stop response"
-                          onClick={() => actions.stop(chat.id)}
-                        >
-                          <Icon name="stop" />
-                        </button>
-                      ) : (
-                        <button
-                          className="send-button"
-                          type="submit"
-                          aria-label="Send message"
-                          title="Send message"
-                          disabled={!chat.composer.trim()}
-                        >
-                          <Icon name="send" />
-                        </button>
-                      )}
-                    </div>
+                    <button
+                      className="send-button"
+                      type={chat.request ? "button" : "submit"}
+                      aria-label={chat.request ? "Stop response" : "Send message"}
+                      disabled={!chat.request && !chat.composer.trim()}
+                      onClick={(event) => {
+                        if (chat.request) {
+                          // Cancel the click before this same button becomes Submit.
+                          event.preventDefault();
+                          actions.stop(chat.id);
+                        }
+                      }}
+                    >
+                      {chat.request ? "Stop" : "Send"}
+                    </button>
                   </form>
+                  {chat.composer.length > 3600 && (
+                    <p className="composer-hint">{chat.composer.length} / 4,000</p>
+                  )}
                   <div className="composer-tools">
                     <button className="text-button" onClick={openPlan}>
                       {hasBrief ? "Review brief" : "Enter details manually"}
@@ -585,8 +600,10 @@ export default function Workspace({ examples }: { examples: string[] }) {
               key={chat.id}
               chat={chat}
               edit={actions.edit}
-              submit={() => void actions.submit("brief")}
-              close={() => setPlan(false)}
+              submit={() => {
+                void actions.submit("brief");
+                focusSoon(() => composer.current);
+              }}
             />
           )}
         </main>

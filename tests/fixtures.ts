@@ -1,6 +1,22 @@
 import { GEOS, VERTICALS } from "../src/lib/brief";
 import { parseDataset, type Dataset } from "../src/lib/data";
 
+export const financeBrief = {
+  vertical: "Finance",
+  geo: "US",
+  kpi: "ctr",
+  budget: 1000,
+} as const;
+// A new chat sends every field, all null.
+export const blankBrief = {
+  clientName: null,
+  vertical: null,
+  kpi: null,
+  geo: null,
+  budget: null,
+  impressionGoal: null,
+};
+
 export function syntheticData(): Dataset {
   return parseDataset({
     catalog:

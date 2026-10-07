@@ -1,27 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkflow } from "../src/lib/workflow";
 import {
   createOllamaModel,
   ModelError,
+  validateExtraction,
   type LanguageModel,
 } from "../src/lib/model";
-import { syntheticData } from "./fixtures";
+import { blankBrief as blank, financeBrief as complete, syntheticData } from "./fixtures";
 
-const complete = {
-  vertical: "Finance",
-  geo: "US",
-  kpi: "ctr",
-  budget: 1000,
-} as const;
-// A new chat sends every field, all null.
-const blank = {
-  clientName: null,
-  vertical: null,
-  kpi: null,
-  geo: null,
-  budget: null,
-  impressionGoal: null,
-};
 const game =
   "im making a mobile video game and looking to setup an ad campaign";
 /** A model answer: changed fields as {value, quote}, issues, and the message's intent. */
@@ -32,22 +18,40 @@ const extraction = (patch = {}, issues: object[] = [], intent = "brief") => ({
 });
 const none = extraction();
 const fake = (output: unknown = none): LanguageModel => ({
-  extract: vi.fn(async () => output),
+  extract: vi.fn(async (message) => validateExtraction(output, message)),
+  answer: vi.fn(async () => "A grounded explanation."),
 });
 const workflow = (model: LanguageModel) =>
   createWorkflow({ model, loadData: async () => syntheticData() });
+const request = (brief: object, message: string, pending: string[] = []) =>
+  ({ mode: "chat", brief, message, pending });
 /** One chat turn through a fake model that answers `output`. */
 const chat = (
   output: unknown,
   brief: object,
   message: string,
   pending: string[] = [],
-) => workflow(fake(output))({ mode: "chat", brief, message, pending });
-const ollama = (content: string, init?: ResponseInit) =>
-  createOllamaModel({
-    fetcher: async () =>
-      new Response(JSON.stringify({ message: { content } }), init),
-  });
+) => workflow(fake(output))(request(brief, message, pending));
+const modelResponse = (content: unknown) => Response.json({
+  message: { content: typeof content === "string" ? content : JSON.stringify(content) },
+});
+/** Unplanned calls succeed, making an extra retry observable in count and result assertions. */
+const replies = (...responses: (Response | Error)[]) => {
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => modelResponse(none));
+  for (const response of responses) {
+    if (response instanceof Error) fetcher.mockRejectedValueOnce(response);
+    else fetcher.mockResolvedValueOnce(response);
+  }
+  return fetcher;
+};
+const requestBody = (call: unknown[]) => JSON.parse((call[1] as RequestInit).body as string);
+const ollama = (content: unknown) => createOllamaModel({
+  fetcher: async () => modelResponse(content),
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe("workflow", () => {
   it("clarifies, ends the invocation, and carries corrections across independent turns", async () => {
@@ -85,7 +89,9 @@ describe("workflow", () => {
     });
     expect(result.status).toBe("ready");
     expect(model.extract).not.toHaveBeenCalled();
+    expect(model.answer).not.toHaveBeenCalled();
     expect(result.explanation[0]).toMatch(/Beta.*budget.*50,000.*80,000/);
+    expect(result.explanation.join(" ")).toContain("not guaranteed outcomes");
   });
   it("isolates concurrent briefs and starts fresh invocations without server memory", async () => {
     const run = workflow(fake());
@@ -103,9 +109,10 @@ describe("workflow", () => {
     ["geo", "geography is TBD", "ambiguous"],
     ["budget", "budget is TBD", "ambiguous"],
     ["vertical", "they have not provided their vertical", "unsupported"],
+    ["geo", "Canada", "unsupported", "Change geography to Canada"],
   ] as const)(
     "keeps %s unresolved for '%s' until corrected",
-    async (field, quote, reason) => {
+    async (field, quote, reason, message?: string) => {
       for (const previous of [
         null,
         field === "impressionGoal" ? 80000 : complete[field],
@@ -115,7 +122,7 @@ describe("workflow", () => {
             { field, reason, quote },
           ]),
           { ...complete, [field]: previous },
-          quote,
+          message ?? quote,
         );
         expect(first).toMatchObject({
           status: "clarification",
@@ -123,8 +130,11 @@ describe("workflow", () => {
           pending: [field],
           recommendation: null,
         });
-        expect(first.explanation[0]).toContain("?");
-        expect(first.explanation[0]).not.toContain("supported");
+        if (quote === "Canada") expect(first.explanation[0]).toMatch(/Canada.*supported geography/);
+        else {
+          expect(first.explanation[0]).toContain("?");
+          expect(first.explanation[0]).not.toContain("supported");
+        }
         const waiting = await chat(none, first.brief, "Okay", first.pending);
         expect(waiting).toMatchObject({
           status: "clarification",
@@ -148,19 +158,6 @@ describe("workflow", () => {
       }
     },
   );
-  it("clears a previously valid field on an unsupported correction", async () => {
-    const result = await chat(
-      extraction({ geo: { value: null, quote: "Canada" } }, [
-        { field: "geo", reason: "unsupported", quote: "Canada" },
-      ]),
-      complete,
-      "Change geography to Canada",
-    );
-    expect(result.status).toBe("clarification");
-    expect(result.brief.geo).toBeNull();
-    expect(result.recommendation).toBeNull();
-    expect(result.explanation[0]).toMatch(/Canada.*supported geography/);
-  });
   it("says what it understood and asks once for what is still missing", async () => {
     const result = await chat(
       extraction({
@@ -178,50 +175,57 @@ describe("workflow", () => {
     expect(result.explanation[0].match(/\?/g)).toHaveLength(1);
   });
   it.each([
-    { goal: undefined, winner: "B", reason: /Alpha.*Gamma.*lower/ },
-    { goal: 80000, winner: "A", reason: /Beta.*budget.*50,000.*80,000/ },
-  ])(
-    "explains $winner and its alternatives without changing the brief",
-    async ({ goal, winner, reason }) => {
-      const brief = { ...complete, impressionGoal: goal };
-      const result = await chat(
-        extraction({}, [], "question"),
-        brief,
-        "Why that product?",
-      );
-      expect(result).toMatchObject({
-        status: "ready",
-        brief,
-        recommendation: { recommended: { id: winner } },
+    { intent: "question", brief: complete, status: "ready" },
+    { intent: "other", brief: blank, status: "clarification" },
+  ])("answers $intent using verified evidence and recent history", async ({ intent, brief, status }) => {
+    const model = fake(extraction({}, [], intent));
+    const loadData = vi.fn(async () => syntheticData());
+    const history = [{ role: "assistant", text: "Earlier discussion about Alpha." }];
+    const result = await createWorkflow({ model, loadData })({ mode: "chat", brief, message: "What about that option?", history });
+    expect(result).toMatchObject({ status, brief });
+    expect(loadData).toHaveBeenCalledTimes(intent === "question" ? 1 : 0);
+    expect(result.explanation[0]).toBe("A grounded explanation.");
+    expect(model.extract).toHaveBeenCalledOnce();
+    expect(model.answer).toHaveBeenCalledExactlyOnceWith("What about that option?", expect.objectContaining({ brief, status }), history, expect.any(AbortSignal));
+    const evidence = vi.mocked(model.answer).mock.calls[0][1];
+    if (intent === "question") {
+      expect(result.recommendation?.recommended?.id).toBe("B");
+      expect(evidence.recommendation).toMatchObject({
+        recommended: { id: "B", ctr: 0.03 },
+        evaluatedProducts: expect.arrayContaining([expect.objectContaining({ name: "Alpha", confidence: 0.7, assessment: expect.stringContaining("2% vs 3%") })]),
       });
-      expect(result.explanation[0]).toMatch(reason);
-    },
-  );
-  it.each([
-    {
-      message: "hi there",
-      brief: blank,
-      status: "clarification",
-      reply: /Hi!.*vertical.*\?/,
-    },
-    { message: "thanks!", brief: complete, status: "ready", reply: /welcome/i },
-  ])(
-    "answers '$message' without changing the brief",
-    async ({ message, brief, status, reply }) => {
-      const result = await chat(extraction({}, [], "other"), brief, message);
-      expect(result).toMatchObject({ status, brief });
-      expect(result.explanation[0]).toMatch(reply);
-    },
-  );
-  it("treats a question that sets a field as a brief change", async () => {
-    const result = await chat(
-      extraction({ budget: { value: 2000, quote: "2000" } }, [], "question"),
-      complete,
-      "What if the budget were 2000?",
-    );
-    expect(result).toMatchObject({ status: "ready", brief: { budget: 2000 } });
+    } else expect(evidence.missing).toEqual(["vertical", "kpi", "geo", "budget"]);
   });
-  it("does not turn a negated KPI mention into a selection", async () => {
+  it.each(["unavailable", "invalid_output", "timeout"] as const)(
+    "preserves the calculated plan when answering fails: %s", async (code) => {
+      const model = fake(extraction({}, [], "question"));
+      vi.mocked(model.answer).mockRejectedValue(new ModelError(code));
+      const result = await workflow(model)({ mode: "chat", brief: complete, message: "Why?" });
+      expect(result).toMatchObject({ status: "ready", brief: complete, modelStatus: "unavailable", errorCode: code, recommendation: { recommended: { id: "B" } } });
+      expect(result.explanation[0]).toMatch(/couldn't generate a tailored reply.*Beta.*3%/);
+      expect(model.answer).toHaveBeenCalledOnce();
+    },
+  );
+  it("keeps the verified plan when the overall deadline expires during answering", async () => {
+    const deadline = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+    const model = fake(extraction({}, [], "question"));
+    vi.mocked(model.answer).mockImplementation(async (_message, _evidence, _history, signal) => {
+      deadline.abort();
+      signal!.throwIfAborted();
+      return "unreachable";
+    });
+    const result = await workflow(model)(request(complete, "Why?"));
+    expect(result).toMatchObject({ status: "ready", errorCode: "timeout", recommendation: { recommended: { id: "B" } } });
+    expect(result.explanation[0]).toContain("couldn't generate a tailored reply");
+  });
+  it("treats a question that sets a field as a brief change", async () => {
+    const model = fake(extraction({ budget: { value: 2000, quote: "2000" } }, [], "question"));
+    const result = await workflow(model)({ mode: "chat", brief: complete, message: "What if the budget were 2000?" });
+    expect(result).toMatchObject({ status: "ready", brief: { budget: 2000 } });
+    expect(model.answer).not.toHaveBeenCalled();
+  });
+  it("preserves the existing KPI when extraction changes only the budget", async () => {
     const result = await chat(
       extraction({ budget: { value: 2000, quote: "2000" } }),
       { ...complete, kpi: "inViewRate" },
@@ -231,6 +235,28 @@ describe("workflow", () => {
       status: "ready",
       brief: { budget: 2000, kpi: "inViewRate" },
     });
+  });
+  it.each([
+    ["A new mobile app", "A new mobile app", "Orbit"],
+    ["A Finance brand", "A Finance brand", "Orbit"],
+    ["A Finance brand", "Finance brand", "Orbit"],
+    ["A new\nmobile app", "A new\nmobile app", "Orbit"],
+    ["Our company", "Our company", "Orbit"],
+    ["Description: A new mobile app", "A new mobile app", "Orbit"],
+    ["The General", "The General", "The General"],
+    ['The app is called "A New Mobile App".', "A New Mobile App", "A New Mobile App"],
+    ["Client: A Company", "A Company", "A Company"],
+    ["Advertiser: A Company", "A Company", "A Company"],
+    ["The client's name is A Company", "A Company", "A Company"],
+    ["The advertiser’s name is A Company", "A Company", "A Company"],
+    ['The client is "A New Brand". A New Brand wants clicks.', "A New Brand", "A New Brand"],
+  ])("distinguishes client names from descriptions: %s", async (message, name, expected) => {
+    const result = await chat(
+      extraction({ clientName: { value: name, quote: name } }),
+      { ...complete, clientName: "Orbit" },
+      message,
+    );
+    expect(result.brief.clientName).toBe(expected);
   });
   it("keeps a field when a null quotes no removal", async () => {
     const result = await chat(
@@ -266,6 +292,7 @@ describe("workflow", () => {
       extraction({ budget: { value: 5000, quote: "$5,000" } }),
     ],
     ["empty output", {}],
+    ["intent treated as a campaign field", extraction({}, [{ field: "intent", reason: "ambiguous", quote: "CTR" }], "question")],
     ["derived value", extraction({ ctr: { value: 1, quote: "CTR" } })],
   ])("rejects %s without changing the brief", async (_, output) => {
     const result = await chat(output, complete, "Set CTR to 100%");
@@ -285,40 +312,35 @@ describe("workflow", () => {
       }),
     ).rejects.toThrow();
   });
-  it("retries transient extraction twice, preserves state on failure, and does not loop", async () => {
-    const model = fake();
-    vi.mocked(model.extract).mockRejectedValue(
-      new ModelError("unavailable", true),
+  it.each([
+    ["unavailable", "unavailable"],
+    ["invalid_output", "unavailable"],
+    ["unavailable", "invalid_output"],
+  ])("shares two extraction calls across %s then %s and preserves the brief", async (first, second) => {
+    const fetcher = replies(...[first, second].map((failure) => failure === "unavailable"
+      ? new Response(null, { status: 503 }) : modelResponse({})));
+    const result = await workflow(createOllamaModel({ fetcher }))(
+      request(complete, "Change budget to $2000"),
     );
-    const result = await workflow(model)({
-      mode: "chat",
-      brief: complete,
-      message: "Change budget to $2000",
-    });
-    expect(model.extract).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({
       status: "error",
-      errorCode: "unavailable",
+      errorCode: second,
       brief: complete,
       recommendation: null,
     });
   });
-  it("returns verified prose with one extraction call and one evidence load", async () => {
-    const model = fake();
-    const loadData = vi.fn(async () => syntheticData());
-    const run = createWorkflow({ model, loadData });
-    const result = await run({
-      mode: "chat",
-      brief: complete,
-      message: "Guarantee 100% CTR",
+  it("allows malformed-output recovery to finish within the shared turn deadline", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const fetcher = vi.fn(async () => {
+      const first = fetcher.mock.calls.length === 1;
+      await new Promise((resolve) => setTimeout(resolve, first ? 40_000 : 10_000));
+      return modelResponse(first ? {} : none);
     });
-    expect(result).toMatchObject({ status: "ready", modelStatus: "used" });
-    expect(result.explanation[0]).toContain("3% historical click-through rate");
-    expect(result.explanation.join(" ")).not.toContain("100%");
-    expect(result.explanation.join(" ")).toContain("not guaranteed outcomes");
-    expect(result.recommendation?.recommended?.ctr).toBe(0.03);
-    expect(model.extract).toHaveBeenCalledTimes(1);
-    expect(loadData).toHaveBeenCalledTimes(1);
+    const result = workflow(createOllamaModel({ fetcher }))(request(complete, "Keep this brief"));
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(await result).toMatchObject({ status: "ready", brief: complete });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -332,11 +354,7 @@ describe("Ollama HTTP adapter", () => {
       },
       [{ field: "kpi", reason: "ambiguous", quote: "KPI undecided" }],
     );
-    const result = await workflow(ollama(JSON.stringify(output)))({
-      mode: "chat",
-      brief: {},
-      message: "Finance, EMEA, $25,000. KPI undecided.",
-    });
+    const result = await workflow(ollama(output))(request({}, "Finance, EMEA, $25,000. KPI undecided."));
     expect(result).toMatchObject({
       status: "clarification",
       modelStatus: "used",
@@ -345,18 +363,13 @@ describe("Ollama HTTP adapter", () => {
     });
   });
   it("requests JSON and returns the structured content", async () => {
-    const fetcher = vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({ message: { content: JSON.stringify(none) } }),
-        ),
-    );
+    const fetcher = replies(modelResponse(none));
     const brief = { ...blank, vertical: "Finance" as const };
     expect(
       await createOllamaModel({ fetcher }).extract("Hello", brief),
     ).toEqual(none);
-    const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    const body = JSON.parse(init.body as string);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const body = requestBody(fetcher.mock.calls[0]);
     expect(body).toMatchObject({
       stream: false,
       options: { temperature: 0 },
@@ -368,40 +381,76 @@ describe("Ollama HTTP adapter", () => {
       vertical: "Finance",
     });
   });
-  it("rejects malformed JSON, wrong envelopes, oversized output, and unavailable models", async () => {
-    for (const body of [
-      "bad JSON",
-      JSON.stringify({ message: {} }),
-      "x".repeat(65_000),
-    ]) {
-      const model = createOllamaModel({
-        fetcher: async () => new Response(body),
-      });
-      await expect(model.extract("Hello", {})).rejects.toMatchObject({
-        code: "invalid_output",
-      });
-    }
-    await expect(
-      ollama("", { status: 404 }).extract("Hello", {}),
-    ).rejects.toMatchObject({
-      code: "unavailable",
-      retryable: false,
-    });
+  it.each([true, false])("retries invalid extraction once and validates the retry (valid: %s)", async (valid) => {
+    const invalid = { issues: [{ field: "intent", reason: "ambiguous", quote: "Why?" }], intent: "question" };
+    const recovered = extraction({}, [], "question");
+    const fetcher = replies(modelResponse(invalid), modelResponse(valid ? recovered : invalid));
+    const result = createOllamaModel({ fetcher }).extract("Why?", complete);
+    if (valid) await expect(result).resolves.toEqual(recovered);
+    else await expect(result).rejects.toMatchObject({ code: "invalid_output" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const [before, after] = fetcher.mock.calls.map(requestBody);
+    expect(after.messages[1]).toEqual(before.messages[1]);
+    expect(after.messages[0]).not.toEqual(before.messages[0]);
   });
-  it("propagates cancellation to HTTP", async () => {
+  it.each([429, 503, "network"])("retries transient extraction failure %s with the same prompt", async (failure) => {
+    const first = typeof failure === "number"
+      ? new Response(null, { status: failure }) : new TypeError("Connection refused");
+    const fetcher = replies(first);
+    await expect(createOllamaModel({ fetcher }).extract("Hello", {})).resolves.toEqual(none);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1][1]!.body).toEqual(fetcher.mock.calls[0][1]!.body);
+  });
+  it("uses the same transport for bounded plain-text answers without JSON mode", async () => {
+    const evidence = await workflow(fake())({ mode: "brief", brief: complete });
+    const fetcher = replies(modelResponse(" A grounded answer. "));
+    const history = [{ role: "user" as const, text: "What about Alpha?" }];
+    expect(await createOllamaModel({ fetcher }).answer("Why?", evidence, history)).toBe("A grounded answer.");
+    const body = requestBody(fetcher.mock.calls[0]);
+    expect(body.format).toBeUndefined();
+    expect(body.messages[1]).toEqual({ role: "user", content: "What about Alpha?" });
+    expect(JSON.parse(body.messages[2].content)).toEqual({ evidence, latestMessage: "Why?" });
+    for (const content of [" ", "x".repeat(4001)])
+      await expect(ollama(content).answer("Why?", evidence, [])).rejects.toMatchObject({ code: "invalid_output" });
+  });
+  it.each([
+    ["malformed JSON", "bad JSON", 200, "invalid_output", 2],
+    ["wrong envelope", JSON.stringify({ message: {} }), 200, "invalid_output", 2],
+    ["oversized output", "x".repeat(65_000), 200, "invalid_output", 2],
+    ["unavailable model", null, 404, "unavailable", 1],
+  ] as const)("rejects %s", async (_name, body, status, code, attempts) => {
+    const fetcher = replies(...Array.from({ length: attempts }, () => new Response(body, { status })));
+    await expect(createOllamaModel({ fetcher }).extract("Hello", {})).rejects.toMatchObject({
+      code, retryable: false,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(attempts);
+  });
+  it.each([1, 2].flatMap((attempt) =>
+    ["timeout", "cancellation"].map((source) => ({ attempt, source })),
+  ))("stops HTTP without another retry on $source during extraction attempt $attempt", async ({ attempt, source }) => {
+    let calls = 0;
     const model = createOllamaModel({
-      timeoutMs: 10,
-      fetcher: async (_url, options) =>
-        new Promise((_resolve, reject) => {
+      timeoutMs: source === "timeout" ? 10 : 1000,
+      fetcher: async (_url, options) => {
+        if (++calls < attempt) return modelResponse({});
+        return new Promise((_resolve, reject) => {
           options!.signal!.addEventListener(
             "abort",
             () => reject(new Error("aborted")),
             { once: true },
           );
-        }),
+        });
+      },
     });
-    await expect(model.extract("Hello", {})).rejects.toMatchObject({
+    const signal = source === "cancellation" ? AbortSignal.timeout(10) : undefined;
+    await expect(model.extract("Hello", {}, signal)).rejects.toMatchObject({
       code: "timeout",
     });
+    expect(calls).toBe(attempt);
+  });
+  it("does not start HTTP for an already cancelled extraction", async () => {
+    const fetcher = vi.fn();
+    await expect(createOllamaModel({ fetcher }).extract("Hello", {}, AbortSignal.abort())).rejects.toMatchObject({ code: "timeout" });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

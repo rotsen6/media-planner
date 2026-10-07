@@ -15,15 +15,19 @@ import {
   emptyWorkspace,
   HISTORY_KEY,
   newConversation,
+  replyText,
   restoreWorkspace,
   workspaceReducer,
   type FormBrief,
   type WorkspaceAction,
   type WorkspaceState,
 } from "@/lib/conversations";
-import { turnResponseSchema } from "@/lib/contract";
+import { revealText } from "@/lib/reveal-text";
+import { readTurnResponse } from "@/lib/turn-stream";
+import { CHAT_HISTORY_LIMIT, CHAT_HISTORY_TEXT_LIMIT } from "@/lib/contract";
 
 const create = () => newConversation(crypto.randomUUID(), Date.now());
+export type ReplyDisplay = { requestId: string; show: (text: string) => void };
 
 /** Chats, their persistence in this browser, and one cancellable request per chat. */
 export function useConversations() {
@@ -32,6 +36,15 @@ export function useConversations() {
   const [storageNotice, setStorageNotice] = useState("");
   const canSave = useRef(true);
   const requests = useRef(new Map<string, AbortController>());
+  const replyRef = useRef<ReplyDisplay>(null);
+  // Restore the displayed prefix when returning to a chat during its reveal or pause.
+  const replies = useRef(new Map<string, string>());
+  const showReply = useCallback((display: ReplyDisplay | null) => {
+    replyRef.current = display;
+    if (!display) return;
+    const text = replies.current.get(display.requestId);
+    if (text !== undefined) display.show(text);
+  }, []);
   const stateRef = useRef(state);
   stateRef.current = state;
   const saver = useMemo(
@@ -124,28 +137,46 @@ export function useConversations() {
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/x-ndjson",
+        },
         signal: controller.signal,
         body: JSON.stringify(
           mode === "chat"
-            ? { mode, brief, message, pending: current.pending }
+            ? {
+                mode, brief, message, pending: current.pending,
+                history: current.messages.slice(-CHAT_HISTORY_LIMIT).map(({ role, text }) => ({
+                  role, text: text.slice(0, CHAT_HISTORY_TEXT_LIMIT),
+                })),
+              }
             : { mode, brief },
         ),
       });
-      const body = await response.json().catch(() => null);
-      const parsed = turnResponseSchema.safeParse(body);
-      if (!parsed.success)
-        throw new Error(
-          typeof body?.error === "string"
-            ? body.error
-            : "The server returned an unreadable response. Please try again.",
+      const result = await readTurnResponse(response, (stage) => {
+        if (!controller.signal.aborted)
+          dispatch({ type: "progress", id, requestId, stage });
+      });
+      if (result.status !== "error") {
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        await revealText(
+          replyText(result),
+          (text) => {
+            replies.current.set(requestId, text);
+            if (replyRef.current?.requestId === requestId) replyRef.current.show(text);
+          },
+          controller.signal,
+          () => !reducedMotion.matches && document.visibilityState === "visible"
+            && stateRef.current.activeId === id && replyRef.current?.requestId === requestId,
+          result.recommendation ? 1000 : undefined,
         );
+      }
       if (!controller.signal.aborted)
         dispatch({
           type: "resolve",
           id,
           requestId,
-          response: parsed.data,
+          response: result,
           now: Date.now(),
         });
     } catch (cause) {
@@ -161,6 +192,7 @@ export function useConversations() {
           now: Date.now(),
         });
     } finally {
+      replies.current.delete(requestId);
       if (requests.current.get(id) === controller) requests.current.delete(id);
     }
   }
@@ -169,6 +201,7 @@ export function useConversations() {
     chat,
     hydrated,
     storageNotice,
+    replyRef: showReply,
     dispatch,
     submit,
     edit(field: keyof FormBrief, value: string) {
