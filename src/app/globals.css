@@ -92,12 +92,6 @@ summary {
     color 0.15s,
     border-color 0.15s;
 }
-input[type="number"] {
-  appearance: textfield;
-}
-input::-webkit-inner-spin-button {
-  appearance: none;
-}
 ::selection {
   background: #284c74;
   color: white;
@@ -535,16 +529,13 @@ input::-webkit-inner-spin-button {
   text-align: right;
   margin-top: 6px;
 }
-.send-button,
-.primary-button,
-.secondary-button {
+.send-button {
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 7px;
 }
-.send-button,
-.primary-button {
+.send-button {
   background: var(--orange);
   color: var(--indigo);
 }
@@ -592,9 +583,6 @@ input::-webkit-inner-spin-button {
   color: #ffd1ab;
   font-size: 12px;
   margin-bottom: 12px;
-}
-.fallback-link {
-  margin-bottom: 10px;
 }
 .connection-note {
   font-size: 11px;
@@ -697,60 +685,12 @@ input::-webkit-inner-spin-button {
 .brief-metadata dd {
   margin: 0;
 }
-.brief-next {
-  display: grid;
-  gap: 16px;
-}
-.brief-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  max-width: 520px;
-}
-.brief-form > p:first-child {
-  margin-bottom: 12px;
-}
-.brief-form label {
-  font-size: 12px;
-  margin-top: 10px;
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-.brief-form label span {
-  color: var(--muted);
-  font-size: 11px;
-}
-.brief-form select,
-.brief-form input {
-  font-size: 13px;
-}
-.primary-button,
-.secondary-button {
-  gap: 10px;
-  padding: 11px 16px;
-  font-size: 13px;
-  font-weight: 500;
-}
-.primary-button:hover,
 .send-button:hover:not(:disabled) {
   background: #ff8533;
 }
-.secondary-button {
-  border: 1px solid #415773;
-  background: var(--surface);
-}
-.secondary-button:hover {
-  background: var(--surface-raised);
-}
-.primary-button svg,
-.secondary-button svg,
 .goal-note svg {
   width: 16px;
   height: 16px;
-}
-.calculate {
-  margin-top: 16px;
 }
 .recommended-plan > .eyebrow {
   font-size: 16px;

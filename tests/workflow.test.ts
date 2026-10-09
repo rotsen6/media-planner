@@ -24,7 +24,7 @@ const fake = (output: unknown = none): LanguageModel => ({
 const workflow = (model: LanguageModel) =>
   createWorkflow({ model, loadData: async () => syntheticData() });
 const request = (brief: object, message: string, pending: string[] = []) =>
-  ({ mode: "chat", brief, message, pending });
+  ({ brief, message, pending });
 /** One chat turn through a fake model that answers `output`. */
 const chat = (
   output: unknown,
@@ -81,27 +81,35 @@ describe("workflow", () => {
     );
     expect(third.recommendation?.recommended?.id).toBe("A");
   });
-  it("uses no model for explicit brief edits", async () => {
-    const model = fake();
-    const result = await workflow(model)({
-      mode: "brief",
-      brief: { ...complete, impressionGoal: 80000 },
-    });
-    expect(result.status).toBe("ready");
-    expect(model.extract).not.toHaveBeenCalled();
-    expect(model.answer).not.toHaveBeenCalled();
-    expect(result.explanation[0]).toMatch(/Beta.*budget.*50,000.*80,000/);
-    expect(result.explanation.join(" ")).toContain("not guaranteed outcomes");
-  });
   it("isolates concurrent briefs and starts fresh invocations without server memory", async () => {
     const run = workflow(fake());
     const [first, second] = await Promise.all([
-      run({ mode: "brief", brief: complete }),
-      run({ mode: "brief", brief: { ...complete, impressionGoal: 80000 } }),
+      run(request(complete, "Keep this brief")),
+      run(request({ ...complete, impressionGoal: 80000 }, "Keep this brief")),
     ]);
     expect(first.recommendation?.recommended?.id).toBe("B");
     expect(second.recommendation?.recommended?.id).toBe("A");
-    expect((await run({ mode: "brief", brief: {} })).missing).toHaveLength(4);
+    expect((await run(request({}, "Hello"))).missing).toHaveLength(4);
+  });
+  it.each([
+    [false, complete], [false, { ...complete, kpi: null }], [true, complete],
+  ])("clears an unknown optional name without requesting it (null patch: %s)", async (nullPatch, brief) => {
+    const quote = "client name is unknown";
+    const result = await chat(
+      nullPatch
+        ? extraction({ clientName: { value: null, quote: "unknown" } })
+        : extraction({}, [{ field: "clientName", reason: "ambiguous", quote }]),
+      { ...brief, clientName: "Orbit" },
+      quote,
+      ["clientName"],
+    );
+    expect(result).toMatchObject({
+      status: brief.kpi ? "ready" : "clarification",
+      brief: { clientName: null },
+      pending: [],
+      missing: brief.kpi ? [] : ["kpi"],
+    });
+    expect(result.explanation.join(" ")).not.toContain("name");
   });
   it.each([
     ["impressionGoal", "lots of impressions", "ambiguous"],
@@ -181,7 +189,7 @@ describe("workflow", () => {
     const model = fake(extraction({}, [], intent));
     const loadData = vi.fn(async () => syntheticData());
     const history = [{ role: "assistant", text: "Earlier discussion about Alpha." }];
-    const result = await createWorkflow({ model, loadData })({ mode: "chat", brief, message: "What about that option?", history });
+    const result = await createWorkflow({ model, loadData })({ brief, message: "What about that option?", history });
     expect(result).toMatchObject({ status, brief });
     expect(loadData).toHaveBeenCalledTimes(intent === "question" ? 1 : 0);
     expect(result.explanation[0]).toBe("A grounded explanation.");
@@ -200,7 +208,7 @@ describe("workflow", () => {
     "preserves the calculated plan when answering fails: %s", async (code) => {
       const model = fake(extraction({}, [], "question"));
       vi.mocked(model.answer).mockRejectedValue(new ModelError(code));
-      const result = await workflow(model)({ mode: "chat", brief: complete, message: "Why?" });
+      const result = await workflow(model)(request(complete, "Why?"));
       expect(result).toMatchObject({ status: "ready", brief: complete, modelStatus: "unavailable", errorCode: code, recommendation: { recommended: { id: "B" } } });
       expect(result.explanation[0]).toMatch(/couldn't generate a tailored reply.*Beta.*3%/);
       expect(model.answer).toHaveBeenCalledOnce();
@@ -221,7 +229,7 @@ describe("workflow", () => {
   });
   it("treats a question that sets a field as a brief change", async () => {
     const model = fake(extraction({ budget: { value: 2000, quote: "2000" } }, [], "question"));
-    const result = await workflow(model)({ mode: "chat", brief: complete, message: "What if the budget were 2000?" });
+    const result = await workflow(model)(request(complete, "What if the budget were 2000?"));
     expect(result).toMatchObject({ status: "ready", brief: { budget: 2000 } });
     expect(model.answer).not.toHaveBeenCalled();
   });
@@ -306,8 +314,7 @@ describe("workflow", () => {
   it("rejects client-supplied rankings and extra input keys", async () => {
     await expect(
       workflow(fake())({
-        mode: "brief",
-        brief: complete,
+        ...request(complete, "Hello"),
         recommendation: { ctr: 1 },
       }),
     ).rejects.toThrow();
@@ -402,7 +409,7 @@ describe("Ollama HTTP adapter", () => {
     expect(fetcher.mock.calls[1][1]!.body).toEqual(fetcher.mock.calls[0][1]!.body);
   });
   it("uses the same transport for bounded plain-text answers without JSON mode", async () => {
-    const evidence = await workflow(fake())({ mode: "brief", brief: complete });
+    const evidence = await workflow(fake())(request(complete, "Keep this brief"));
     const fetcher = replies(modelResponse(" A grounded answer. "));
     const history = [{ role: "user" as const, text: "What about Alpha?" }];
     expect(await createOllamaModel({ fetcher }).answer("Why?", evidence, history)).toBe("A grounded answer.");

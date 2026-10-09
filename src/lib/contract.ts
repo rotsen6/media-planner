@@ -14,16 +14,12 @@ const chatMessageSchema = z.strictObject({
 });
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
-export const turnRequestSchema = z.discriminatedUnion("mode", [
-  z.strictObject({
-    mode: z.literal("chat"),
-    brief: briefSchema,
-    message: z.string().trim().min(1).max(4000),
-    pending: pendingFieldsSchema.default([]),
-    history: z.array(chatMessageSchema).max(CHAT_HISTORY_LIMIT).default([]),
-  }),
-  z.strictObject({ mode: z.literal("brief"), brief: briefSchema }),
-]);
+export const turnRequestSchema = z.strictObject({
+  brief: briefSchema,
+  message: z.string().trim().min(1).max(4000),
+  pending: pendingFieldsSchema.default([]),
+  history: z.array(chatMessageSchema).max(CHAT_HISTORY_LIMIT).default([]),
+});
 export const turnResponseSchema = z.object({
   status: z.enum(["ready", "infeasible", "clarification", "error"]),
   brief: briefSchema,
@@ -31,12 +27,11 @@ export const turnResponseSchema = z.object({
   pending: pendingFieldsSchema,
   recommendation: recommendationSchema.nullable(),
   explanation: z.array(z.string()),
-  modelStatus: z.enum(["used", "not_used", "unavailable"]),
+  modelStatus: z.enum(["used", "not_used", "unavailable"]), // Read earlier saved plans.
   errorCode: z
     .enum(["unavailable", "invalid_output", "timeout", "internal"])
     .optional(),
 });
-export type TurnRequest = z.infer<typeof turnRequestSchema>;
 export type TurnResponse = z.infer<typeof turnResponseSchema>;
 
 export const turnStageSchema = z.enum(["extract", "validate", "respond"]);

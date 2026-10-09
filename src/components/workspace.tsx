@@ -178,7 +178,7 @@ function PendingReply({ request, ref, onReveal }: {
   ) : (
     <p className="working" role="status">
       <span />
-      {TURN_STAGE_LABELS[request.stage ?? (request.mode === "chat" ? "extract" : "validate")]}
+      {TURN_STAGE_LABELS[request.stage ?? "extract"]}
     </p>
   );
 }
@@ -302,7 +302,7 @@ function SetupNote({ onVersion }: { onVersion: (version: string) => void }) {
           ? "The bundled campaign data could not be loaded."
           : failed
             ? "Connection status is unavailable."
-            : "Chat is offline. You can still enter details manually."}
+            : "Chat is offline. Start Ollama to continue."}
       </span>
       <button className="text-button" onClick={() => void read()}>
         Retry
@@ -312,12 +312,11 @@ function SetupNote({ onVersion }: { onVersion: (version: string) => void }) {
         <div>
           {noData ? (
             <>
-              Restore the supplied files in <code>data/private/</code> or check
-              your <code>DATA_DIR</code> setting, then restart.
+              Restore the supplied files in <code>data/private/</code>, then restart.
             </>
           ) : (
             <>
-              Start Ollama and install the configured model
+              Start Ollama and install the model
               {status?.model && (
                 <>
                   : <code>ollama pull {status.model}</code>
@@ -397,7 +396,7 @@ export default function Workspace({ examples }: { examples: string[] }) {
       setSearch={setSearch}
     />
   );
-  const hasBrief = chat && Object.values(chat.form).some(Boolean);
+  const hasBrief = chat && Object.values(chat.brief).some(Boolean);
 
   return (
     <div className="app-shell">
@@ -496,19 +495,11 @@ export default function Workspace({ examples }: { examples: string[] }) {
                       {chat.error}
                     </p>
                   )}
-                  {chat.result?.status === "error" && (
-                    <button
-                      className="text-button fallback-link"
-                      onClick={openPlan}
-                    >
-                      Enter details manually <Icon name="chevron" />
-                    </button>
-                  )}
                   <form
                     className="composer"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      void actions.submit("chat");
+                      void actions.submit();
                     }}
                   >
                     <textarea
@@ -555,9 +546,9 @@ export default function Workspace({ examples }: { examples: string[] }) {
                     <p className="composer-hint">{chat.composer.length} / 4,000</p>
                   )}
                   <div className="composer-tools">
-                    <button className="text-button" onClick={openPlan}>
-                      {hasBrief ? "Review brief" : "Enter details manually"}
-                    </button>
+                    {hasBrief && (
+                      <button className="text-button" onClick={openPlan}>Review brief</button>
+                    )}
                     {examples.length > 0 && chat.messages.length === 0 && (
                       <button
                         className="text-button"
@@ -596,15 +587,7 @@ export default function Workspace({ examples }: { examples: string[] }) {
             )}
           </section>
           {chat?.planOpen && (
-            <PlanPanel
-              key={chat.id}
-              chat={chat}
-              edit={actions.edit}
-              submit={() => {
-                void actions.submit("brief");
-                focusSoon(() => composer.current);
-              }}
-            />
+            <PlanPanel key={chat.id} chat={chat} />
           )}
         </main>
       </div>

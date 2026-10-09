@@ -20,8 +20,7 @@ Read the diagram top to bottom. Actor names in the standalone SVG link to the gu
 | --- | --- |
 | Open or reload | Restore this browser's saved chats and check data/model readiness. Interrupted chat turns return as drafts. |
 | Missing details | Ask a clarification. The user's answer starts another request carrying the brief and unresolved fields. |
-| Manual brief | Skip Ollama; validate and calculate directly. |
-| Stop or edit | Abort the request or reveal. Request IDs prevent late results from replacing edits. |
+| Stop | Abort the request or reveal. Request IDs reject late results. |
 | Model failure | Failed extraction leaves the brief unchanged. Failed follow-up generation keeps the calculated plan and uses its summary. |
 
 Conversation changes save throughout the turn; text animation is temporary. Reduced motion or hidden chats skip the reveal and pause. Refinements repeat the same path.

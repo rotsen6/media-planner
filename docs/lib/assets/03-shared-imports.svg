@@ -16,9 +16,6 @@
   </defs>
   <text x="48" y="48" font-size="28" fill="#263343" text-anchor="start" font-weight="500">Shared definitions connect the remaining modules</text>
   <text x="48" y="80" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Import graph · brief.ts is the common vocabulary; reveal-text.ts is independent of the other library modules.</text>
-  <g data-source="conversations" data-target="evidence" data-kind="runtime">
-    <path d="M256 216 L256 300" fill="none" stroke="#68768a" stroke-width="2" marker-end="url(#03-shared-imports-muted)"/>
-  </g>
   <g data-source="conversations" data-target="contract" data-kind="runtime">
     <path d="M304 216 L304 240 Q304 248 312 248 L504 248 Q512 248 512 256 L512 300" fill="none" stroke="#68768a" stroke-width="2" marker-end="url(#03-shared-imports-muted)"/>
   </g>
@@ -77,7 +74,7 @@
   <g data-node="evidence">
     <rect x="96" y="300" width="240" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
     <rect x="272" y="308" width="52" height="20" rx="2" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
-    <text x="298" y="324" font-size="12" fill="#68768a" text-anchor="middle" font-weight="400">2 in</text>
+    <text x="298" y="324" font-size="12" fill="#68768a" text-anchor="middle" font-weight="400">1 in</text>
     <text x="112" y="336" font-size="20" fill="#263343" text-anchor="start" font-weight="500">evidence.ts</text>
     <text x="112" y="360" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Formatting + reasons</text>
   </g>
@@ -105,5 +102,5 @@
   <line x1="48" y1="672" x2="1232" y2="672" stroke="#d9e1eb"/>
   <text x="48" y="700" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Solid: value import</text>
   <text x="328" y="700" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Badges: direct value importers across src/lib</text>
-  <text x="48" y="740" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">10 remaining runtime edges. Together the two import diagrams cover all 10 modules, 18 value edges and 3 type-only edges.</text>
+  <text x="48" y="740" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">9 remaining runtime edges. Together the two import diagrams cover all 10 modules, 17 value edges and 3 type-only edges.</text>
 </svg>

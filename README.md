@@ -14,7 +14,7 @@ npm install
 npm run dev
 ```
 
-Open **http://127.0.0.1:3000** and describe your campaign in chat. The brief editor works without Ollama.
+Open **http://127.0.0.1:3000** and describe your campaign in chat. Refine details or ask about the plan in the same conversation.
 
 ## Verify
 
@@ -29,4 +29,3 @@ npm run test:live   # Requires Ollama
 - [Library, planning rules, and diagrams](docs/lib/README.md)
 - [API and streaming](docs/api/README.md)
 - [UI and saved chats](docs/ui/README.md)
-- [Benchmarks](docs/benchmarks/README.md)

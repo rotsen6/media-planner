@@ -94,7 +94,7 @@ const choices: Record<BriefField, string> = {
   impressionGoal: "a number of impressions, or no minimum",
 };
 const verbs = { unsupported: "isn't a supported", invalid: "isn't a valid" };
-// Unknown details still block a plan; this affects only how we ask for them.
+// Unknown constraints still block a plan; this affects only how we ask for them.
 const UNKNOWN =
   /(?:\bnot\b|n't|\bno\b|\bnever\b)[^.]{0,24}\b(provided|said|specified|decided|given|known|sure|chosen|confirmed|determined|mentioned|settled)\b|\b(tbd|tba|unknown|undecided|unspecified|unsure)\b/i;
 const shown = (field: BriefField, value: string | number) =>
@@ -139,7 +139,7 @@ export function explainClarification({
         : `“${i.quote}” ${verbs[i.reason]} ${labels[i.field]}. Please use ${choices[i.field]}.`,
     ),
     !issues.length && pending.length
-      ? `Please settle the ${list(pending.map((f) => labels[f]))}: give a value, drop it if it is optional, or edit the brief.`
+      ? `Please settle the ${list(pending.map((f) => labels[f]))}: give a value or drop it if it is optional.`
       : "",
     needed.length
       ? `What ${needed.length > 1 ? "are" : "is"} your ${list(needed.map((f) => `${labels[f]} (${choices[f]})`))}?`

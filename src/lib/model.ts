@@ -9,10 +9,9 @@ import {
 import { readText, type ChatMessage, type TurnResponse } from "./contract";
 import { RANKING_POLICY } from "./recommend";
 
-const baseUrl = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
 export const ollamaConfig = {
-  baseUrl: baseUrl.replace(/\/$/, ""),
-  model: process.env.OLLAMA_MODEL ?? "qwen2.5:14b",
+  baseUrl: "http://127.0.0.1:11434",
+  model: "qwen2.5:14b",
   timeoutMs: 45_000,
 };
 
@@ -104,13 +103,14 @@ const dropSharedQuotes: Check = ({ patch, issues, intent }) => {
     new Set(owners.get(normalize(quote))?.map((c) => c.field)).size > 1;
   return { patch, issues: issues.filter((i) => !shared(i.quote)), intent };
 };
-/** A null clears a field, so it needs removal wording or an unusable new value behind it. */
+/** Null needs removal wording, an unusable value, or an unknown optional name. */
 const dropUnjustifiedNulls: Check = ({ patch, issues, intent }) => ({
   patch: Object.fromEntries(
     Object.entries(patch).filter(
       ([field, change]) =>
         change?.value != null ||
         REMOVAL.test(change?.quote ?? "") ||
+        (field === "clientName" && /\b(unknown|undecided|unavailable)\b/i.test(change?.quote ?? "")) ||
         issues.some((i) => i.field === field),
     ),
   ),
@@ -192,7 +192,7 @@ export function createOllamaModel({
           "unavailable",
           response.status === 429 || response.status >= 500,
         );
-      // Model output is bounded even when the configured server misbehaves.
+      // Model output is bounded even when the server misbehaves.
       const envelope = z
         .object({ message: z.object({ content: z.string().max(32_000) }) })
         .parse(JSON.parse(await readText(response.body, 64_000)));

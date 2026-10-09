@@ -9,8 +9,6 @@ import {
   useState,
 } from "react";
 import {
-  briefFromForm,
-  briefMessage,
   createWorkspaceSaver,
   emptyWorkspace,
   HISTORY_KEY,
@@ -18,7 +16,6 @@ import {
   replyText,
   restoreWorkspace,
   workspaceReducer,
-  type FormBrief,
   type WorkspaceAction,
   type WorkspaceState,
 } from "@/lib/conversations";
@@ -115,25 +112,17 @@ export function useConversations() {
     requests.current.get(id)?.abort();
     requests.current.delete(id);
   };
-  async function submit(mode: "chat" | "brief") {
+  async function submit() {
     const { chats, activeId } = stateRef.current;
     const current = chats.find((c) => c.id === activeId);
     if (!current || current.request || requests.current.has(current.id)) return;
-    const brief = briefFromForm(current.form);
-    if (!brief) {
-      const error =
-        "Check the brief: budget must be positive and an impression goal must be a positive whole number.";
-      dispatch({ type: "error", id: current.id, error });
-      return;
-    }
-    const message =
-      mode === "chat" ? current.composer.trim() : briefMessage(current.form);
+    const message = current.composer.trim();
     if (!message) return;
     const { id } = current;
     const requestId = crypto.randomUUID();
     const controller = new AbortController();
     requests.current.set(id, controller);
-    dispatch({ type: "start", id, requestId, mode, message, now: Date.now() });
+    dispatch({ type: "start", id, requestId, message, now: Date.now() });
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -142,16 +131,12 @@ export function useConversations() {
           Accept: "application/x-ndjson",
         },
         signal: controller.signal,
-        body: JSON.stringify(
-          mode === "chat"
-            ? {
-                mode, brief, message, pending: current.pending,
-                history: current.messages.slice(-CHAT_HISTORY_LIMIT).map(({ role, text }) => ({
-                  role, text: text.slice(0, CHAT_HISTORY_TEXT_LIMIT),
-                })),
-              }
-            : { mode, brief },
-        ),
+        body: JSON.stringify({
+          brief: current.brief, message, pending: current.pending,
+          history: current.messages.slice(-CHAT_HISTORY_LIMIT).map(({ role, text }) => ({
+            role, text: text.slice(0, CHAT_HISTORY_TEXT_LIMIT),
+          })),
+        }),
       });
       const result = await readTurnResponse(response, (stage) => {
         if (!controller.signal.aborted)
@@ -204,11 +189,6 @@ export function useConversations() {
     replyRef: showReply,
     dispatch,
     submit,
-    edit(field: keyof FormBrief, value: string) {
-      if (!chat) return;
-      abort(chat.id);
-      dispatch({ type: "edit", id: chat.id, field, value, now: Date.now() });
-    },
     stop(id: string) {
       abort(id);
       dispatch({ type: "cancel", id });

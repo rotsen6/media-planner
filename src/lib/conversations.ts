@@ -1,12 +1,5 @@
 import { z } from "zod";
-import {
-  briefFieldSchema,
-  briefSchema,
-  KPI_LABELS,
-  type Brief,
-  type Kpi,
-} from "./brief";
-import { number } from "./evidence";
+import { briefFieldSchema, briefSchema, type Brief } from "./brief";
 import {
   pendingFieldsSchema,
   turnResponseSchema,
@@ -17,31 +10,24 @@ import {
 
 export const HISTORY_KEY = "kargo.media-planner.v1";
 const FIELDS = briefFieldSchema.options;
-const formSchema = z.record(briefFieldSchema, z.string());
-export type FormBrief = z.infer<typeof formSchema>;
-export const formFromBrief = (brief: Brief) =>
-  Object.fromEntries(
-    FIELDS.map((key) => [key, brief[key]?.toString() ?? ""]),
-  ) as FormBrief;
-/** Blank fields are null and numeric fields are numbers; undefined when invalid. */
-export const briefFromForm = (form: FormBrief): Brief | undefined =>
-  briefSchema.safeParse(
-    Object.fromEntries(
-      FIELDS.map((key) => [
-        key,
-        !form[key].trim()
-          ? null
-          : key === "budget" || key === "impressionGoal"
-            ? Number(form[key])
-            : form[key],
-      ]),
-    ),
-  ).data;
+// Read earlier form-based saves once; every subsequent save uses the typed brief.
+const restoreBrief = (value: unknown) => {
+  const chat = value as { brief?: Brief; form?: Record<string, string> } | null;
+  if (!chat?.form || chat.brief) return value;
+  return {
+    ...chat,
+    brief: Object.fromEntries(FIELDS.map((key) => {
+      const value = chat.form![key]?.trim();
+      const field = !value ? null : key === "budget" || key === "impressionGoal" ? Number(value) : value;
+      return [key, briefSchema.shape[key].safeParse(field).data ?? null];
+    })),
+  };
+};
 
-const storedChatSchema = z.object({
+const storedChatSchema = z.preprocess(restoreBrief, z.object({
   id: z.string().min(1),
   updatedAt: z.number(),
-  form: formSchema,
+  brief: briefSchema,
   composer: z.string().max(4000),
   messages: z.array(
     z.object({
@@ -58,14 +44,13 @@ const storedChatSchema = z.object({
   request: z
     .object({
       id: z.string(),
-      mode: z.enum(["chat", "brief"]),
       message: z.string(),
       stage: turnStageSchema.optional(),
     })
     .nullable(),
   error: z.string(),
   planOpen: z.boolean(),
-});
+}));
 const workspaceSchema = z.object({
   version: z.literal(1),
   chats: z.array(storedChatSchema),
@@ -88,7 +73,7 @@ export const emptyWorkspace: WorkspaceState = {
 export const newConversation = (id: string, now: number): Conversation => ({
   id,
   updatedAt: now,
-  form: formFromBrief({}),
+  brief: {},
   composer: "",
   messages: [],
   pending: [],
@@ -102,21 +87,21 @@ export const newConversation = (id: string, now: number): Conversation => ({
 const hasContent = (chat: Conversation) =>
   !!chat.messages.length ||
   !!chat.composer.trim() ||
-  Object.values(chat.form).some((value) => value.trim());
+  Object.values(chat.brief).some((value) => value != null);
 export function chatTitle(chat: Conversation) {
   const title =
-    chat.form.clientName.trim() ||
+    chat.brief.clientName ||
     chat.messages.find((m) => m.role === "user")?.text ||
     chat.composer.trim();
   if (title) return title.length > 60 ? `${title.slice(0, 57)}…` : title;
-  return chat.form.vertical ? `${chat.form.vertical} campaign` : "New chat";
+  return chat.brief.vertical ? `${chat.brief.vertical} campaign` : "New chat";
 }
 export function chatSubtitle(chat: Conversation) {
   if (chat.request) return "Working…";
   if (chat.dirty && chat.revision > 0) return "Brief updated";
   if (chat.result?.status === "ready") return "Plan ready";
   if (chat.result?.status === "infeasible") return "Needs adjustment";
-  const place = [chat.form.vertical, chat.form.geo].filter(Boolean);
+  const place = [chat.brief.vertical, chat.brief.geo].filter(Boolean);
   return place.join(" · ") || "Draft";
 }
 export const historyChats = (state: WorkspaceState) =>
@@ -125,29 +110,8 @@ export const replyText = (response: TurnResponse) =>
   response.status === "ready"
     ? (response.explanation[0] ?? "")
     : response.explanation.join("\n\n");
-/** The transcript line for a calculation started from the brief editor. */
-export const briefMessage = (f: FormBrief) =>
-  [
-    "Campaign brief",
-    f.clientName,
-    f.vertical,
-    f.geo,
-    f.kpi && KPI_LABELS[f.kpi as Kpi],
-    f.budget && `$${Number(f.budget).toLocaleString("en-US")} budget`,
-    f.impressionGoal && `${number(+f.impressionGoal)} minimum impressions`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-const sameBrief = (form: FormBrief, response: TurnResponse) => {
-  const brief = briefFromForm(form);
-  return (
-    !!brief &&
-    FIELDS.every(
-      (key) => (brief[key] ?? null) === (response.brief[key] ?? null),
-    )
-  );
-};
+const sameBrief = (brief: Brief, response: TurnResponse) =>
+  FIELDS.every((key) => (brief[key] ?? null) === (response.brief[key] ?? null));
 /** A corrupt store is reported, never silently overwritten by a new workspace. */
 export function restoreWorkspace(raw: string | null): WorkspaceState | null {
   if (raw === null) return null;
@@ -163,12 +127,12 @@ export function restoreWorkspace(raw: string | null): WorkspaceState | null {
         dirty: true,
         composer: recoverDraft(stored),
         error:
-          "The last response was interrupted. Send again or update the plan to continue.",
+          "The last response was interrupted. Send again to continue.",
       };
     // A saved plan is trusted only while it is valid, clean, and matches its brief.
     const parsed = turnResponseSchema.safeParse(stored.result).data;
     const result =
-      parsed && !stored.dirty && sameBrief(stored.form, parsed) ? parsed : null;
+      parsed && !stored.dirty && sameBrief(stored.brief, parsed) ? parsed : null;
     const dirty = stored.dirty || (stored.result != null && !result);
     return { ...stored, result, dirty };
   });
@@ -205,18 +169,9 @@ type ChatAction =
   | { type: "plan"; id: string; open: boolean }
   | { type: "draft"; id: string; value: string; now: number }
   | {
-      type: "edit";
-      id: string;
-      field: keyof FormBrief;
-      value: string;
-      now: number;
-    }
-  | { type: "error"; id: string; error: string }
-  | {
       type: "start";
       id: string;
       requestId: string;
-      mode: "chat" | "brief";
       message: string;
       now: number;
     }
@@ -246,8 +201,8 @@ export type WorkspaceAction =
 
 // A stopped or failed turn hands its message back unless a new draft was typed.
 const recoverDraft = (chat: Pick<Conversation, "composer" | "request">) =>
-  chat.composer || (chat.request?.mode === "chat" ? chat.request.message : "");
-// A brief change drops the plan at once; the new revision marks older answers stale.
+  chat.composer || chat.request?.message || "";
+// New evidence drops the saved plan and marks older answers stale.
 const invalidate = (chat: Conversation): Conversation => ({
   ...chat,
   result: null,
@@ -315,17 +270,6 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
       return { ...chat, planOpen: action.open };
     case "draft":
       return { ...chat, composer: action.value, updatedAt: action.now };
-    case "error":
-      return { ...chat, error: action.error };
-    case "edit":
-      return {
-        ...invalidate(chat),
-        form: { ...chat.form, [action.field]: action.value },
-        request: null,
-        error: "",
-        updatedAt: action.now,
-        pending: chat.pending.filter((field) => field !== action.field),
-      };
     case "start":
       return {
         ...chat,
@@ -334,12 +278,11 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
         dirty: false,
         error: "",
         updatedAt: action.now,
-        composer: action.mode === "chat" ? "" : chat.composer,
+        composer: "",
         request: {
           id: action.requestId,
-          mode: action.mode,
           message: action.message,
-          stage: action.mode === "chat" ? "extract" : "validate",
+          stage: "extract",
         },
         messages: [
           ...chat.messages,
@@ -356,14 +299,14 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
         ? { ...chat, request: { ...chat.request, stage: action.stage } }
         : chat;
     case "resolve": {
-      // Late answers to a stopped, edited, or replaced request are ignored.
+      // Late answers to a stopped or replaced request are ignored.
       if (chat.request?.id !== action.requestId) return chat;
       const next = action.response;
       // Only a changed brief makes earlier plan messages stale.
-      const revision = chat.revision + (sameBrief(chat.form, next) ? 0 : 1);
+      const revision = chat.revision + (sameBrief(chat.brief, next) ? 0 : 1);
       return {
         ...chat,
-        form: formFromBrief(next.brief),
+        brief: next.brief,
         pending: next.pending,
         result: next,
         revision,

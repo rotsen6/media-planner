@@ -66,7 +66,7 @@
   <g data-node="evidence">
     <rect x="784" y="136" width="240" height="80" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
     <rect x="960" y="144" width="52" height="20" rx="2" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
-    <text x="986" y="160" font-size="12" fill="#68768a" text-anchor="middle" font-weight="400">2 in</text>
+    <text x="986" y="160" font-size="12" fill="#68768a" text-anchor="middle" font-weight="400">1 in</text>
     <text x="800" y="176" font-size="20" fill="#263343" text-anchor="start" font-weight="500">evidence.ts</text>
     <text x="800" y="200" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Shared reason text</text>
   </g>

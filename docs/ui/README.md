@@ -2,14 +2,14 @@
 
 Overview: [request lifecycle](../lifecycle/README.md).
 
-The workspace has chat history, a conversation, and an editable brief/plan panel. **Enter details manually** works without a model.
+The workspace has chat history, a conversation, and a read-only brief/plan panel. Update the brief through chat.
 
 ![UI request, reply animation, plan display, and browser storage](assets/01-response-flow.svg)
 
 | File | Responsibility |
 | --- | --- |
 | [workspace.tsx](../../src/components/workspace.tsx) | Navigation, conversation, and layout. |
-| [plan-panel.tsx](../../src/components/plan-panel.tsx) | Brief editing, plan metrics, and alternatives. |
+| [plan-panel.tsx](../../src/components/plan-panel.tsx) | Brief summary, plan metrics, and alternatives. |
 | [use-conversations.ts](../../src/components/use-conversations.ts) | Browser effects, requests, cancellation, and persistence. |
 | [conversations.ts](../../src/lib/conversations.ts) | Chat state, revisions, restoration, and saving. |
 
@@ -17,7 +17,7 @@ The workspace has chat history, a conversation, and an editable brief/plan panel
 
 Chats save messages, drafts, briefs, pending questions, and results in `localStorage`. Saving waits 300 ms after changes, but runs immediately on chat navigation, page hiding, or unmount. Chats stay in this browser and origin; accounts and tabs do not sync. Clearing browser data removes chats; storage failures show a notice.
 
-Editing the brief or changing the dataset clears outdated plans. Request IDs keep late responses from overwriting edits. Interrupted chat requests restore as drafts.
+New requests or a changed dataset clear outdated plans. Request IDs reject late responses. Interrupted requests restore as drafts.
 
 ## Response presentation
 

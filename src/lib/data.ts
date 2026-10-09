@@ -110,7 +110,7 @@ export function parseDataset(sources: DataSources) {
 }
 
 const read = (name: string) =>
-  readFile(resolve(process.env.DATA_DIR ?? "data/private", name), "utf8");
+  readFile(resolve("data/private", name), "utf8");
 let dataset: Promise<Dataset> | undefined;
 
 /** One immutable dataset per server process; a failed load is retried on the next call. */

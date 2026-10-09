@@ -14,13 +14,7 @@ export const KPI_LABELS: Record<Kpi, string> = {
   ctr: "Click-through rate",
   inViewRate: "In-view rate",
 };
-/** Numeric bounds, shared by the schema and the brief form. */
-export const LIMITS = {
-  budget: { min: 0.01, max: 1_000_000_000 },
-  impressionGoal: { min: 1, max: 1_000_000_000_000 },
-};
-const bounded = ({ min, max }: { min: number; max: number }) =>
-  z.number().finite().min(min).max(max);
+const budget = z.number().finite().min(0.01).max(1_000_000_000);
 
 // null deliberately clears a field. An omitted field preserves its prior value.
 export const briefSchema = z.strictObject({
@@ -28,15 +22,15 @@ export const briefSchema = z.strictObject({
   vertical: z.enum(VERTICALS).nullish(),
   kpi: z.enum(KPIS).nullish(),
   geo: z.enum(GEOS).nullish(),
-  budget: bounded(LIMITS.budget).nullish(),
-  impressionGoal: bounded(LIMITS.impressionGoal).int().nullish(),
+  budget: budget.nullish(),
+  impressionGoal: z.number().int().min(1).max(1_000_000_000_000).nullish(),
 });
 export const briefFieldSchema = briefSchema.keyof();
 export const completeBriefSchema = briefSchema.extend({
   vertical: z.enum(VERTICALS),
   kpi: z.enum(KPIS),
   geo: z.enum(GEOS),
-  budget: bounded(LIMITS.budget),
+  budget,
 });
 
 export type Brief = z.infer<typeof briefSchema>;

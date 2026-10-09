@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="01-request-flow-title 01-request-flow-desc" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
   <title id="01-request-flow-title">From a message to a visible plan</title>
-  <desc id="01-request-flow-desc">Execution flow · Manual briefs skip extraction; pure questions and small talk get an optional answer.</desc>
+  <desc id="01-request-flow-desc">Execution flow · Chat updates the brief; questions and small talk get an optional answer.</desc>
   <rect x="0" y="0" width="1280" height="720" rx="6" fill="#ffffff"/>
   <defs>
     <marker id="01-request-flow-muted" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
@@ -15,7 +15,7 @@
     </marker>
   </defs>
   <text x="48" y="48" font-size="28" fill="#263343" text-anchor="start" font-weight="500">From a message to a visible plan</text>
-  <text x="48" y="80" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Execution flow · Manual briefs skip extraction; pure questions and small talk get an optional answer.</text>
+  <text x="48" y="80" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Execution flow · Chat updates the brief; questions and small talk get an optional answer.</text>
   <rect x="632" y="120" width="600" height="340" rx="8" fill="#f7faff" stroke="#4878b8" stroke-width="1.2" stroke-dasharray="8 8"/>
   <text x="656" y="156" font-size="20" fill="#4878b8" text-anchor="start" font-weight="500">LangGraph · workflow.ts</text>
   <g data-source="submit" data-target="api" data-kind="flow">
@@ -39,14 +39,9 @@
   <g data-source="return" data-target="present" data-kind="flow">
     <path d="M344 584 L288 584" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
   </g>
-  <g data-source="api" data-target="merge" data-kind="branch">
-    <path d="M456 284 L456 308 Q456 316 464 316 L1008 316 Q1016 316 1016 308 L1016 284" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#01-request-flow-muted)"/>
-  </g>
   <g data-source="respond" data-target="return" data-kind="branch">
     <path d="M1120 440 L1120 480 Q1120 488 1112 488 L922 488 Q916 500 910 488 L480 488 Q472 488 472 496 L472 532" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#01-request-flow-muted)"/>
   </g>
-  <rect x="456" y="288" width="144" height="20" rx="0" fill="#ffffff"/>
-  <text x="528.0" y="304" font-size="12" fill="#68768a" text-anchor="middle" font-weight="500">MANUAL BRIEF</text>
   <rect x="504" y="460" width="112" height="20" rx="0" fill="#ffffff"/>
   <text x="560.0" y="476" font-size="12" fill="#68768a" text-anchor="middle" font-weight="500">BRIEF TURN</text>
   <g data-node="submit">

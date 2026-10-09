@@ -1,7 +1,7 @@
 import { loadDataset } from "@/lib/data";
 import { ollamaConfig } from "@/lib/model";
 
-/** Setup state for the UI: is the evidence loaded, and is the configured model installed? */
+/** Setup state for the UI: is the evidence loaded, and is the model installed? */
 export async function GET() {
   const { baseUrl, model } = ollamaConfig;
   const [data, modelReady] = await Promise.all([
@@ -26,7 +26,6 @@ export async function GET() {
           Array.isArray(models) &&
           models.some((m) => m.name === model || m.model === model),
       )
-      // Editing the structured brief still works without a model.
       .catch(() => false),
   ]);
   return Response.json(

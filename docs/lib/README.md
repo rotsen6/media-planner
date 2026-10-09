@@ -8,14 +8,14 @@ Overview: [request lifecycle](../lifecycle/README.md).
 
 ![Request flow from validation through LangGraph to the browser](assets/01-request-flow.svg)
 
-1. **Send.** [use-conversations.ts](../../src/components/use-conversations.ts) sends the message, current brief, unresolved fields, and recent history. Manual entry sends an explicit brief.
+1. **Send.** [use-conversations.ts](../../src/components/use-conversations.ts) sends the message, current brief, unresolved fields, and recent history.
 2. **Validate.** The [chat route](../../src/app/api/chat/route.ts) checks the request and connects the workflow to the dataset, model, and cancellation signal.
-3. **Extract — LLM, then code.** [model.ts](../../src/lib/model.ts) sends Ollama the latest message and current brief. It returns intent and field changes with source quotes; code checks the output. Field changes take priority over questions; manual entry skips extraction.
-4. **Merge — code.** [workflow.ts](../../src/lib/workflow.ts) applies changes through [brief.ts](../../src/lib/brief.ts). Omitted fields stay unchanged; `null` clears them. Values flagged as unusable clear the old field and trigger a question.
+3. **Extract — LLM, then code.** [model.ts](../../src/lib/model.ts) sends Ollama the latest message and current brief. It returns intent and field changes with source quotes; code checks the output. Field changes take priority over questions.
+4. **Merge — code.** [workflow.ts](../../src/lib/workflow.ts) applies changes through [brief.ts](../../src/lib/brief.ts). Omitted fields stay unchanged; `null` clears them. Unusable constraints trigger a question; an unknown advertiser name never blocks a plan.
 5. **Calculate — code.** Missing or unresolved fields get a clarification. Otherwise, [recommend.ts](../../src/lib/recommend.ts) calculates and validates a plan; [evidence.ts](../../src/lib/evidence.ts) writes its summary.
-6. **Answer — optional LLM.** Questions and small talk get a tailored reply using the current evidence and recent history. Brief changes and manual calculations skip this call.
+6. **Answer — optional LLM.** Questions and small talk get a tailored reply using the current evidence and recent history. Brief changes skip this call.
 7. **Return.** Generated text can replace the summary, never the plan. Failed answer generation keeps the calculated result with a fallback notice. Failed extraction preserves the previous brief.
-8. **Display and save.** The browser reveals the reply, pauses before showing the plan, and saves the conversation. Request IDs prevent late responses from overwriting newer edits.
+8. **Display and save.** The browser reveals the reply, pauses before showing the plan, and saves the conversation. Request IDs reject late responses.
 
 LangGraph runs **extract → merge → respond**. Answer generation runs afterward, so its failure cannot discard a calculated plan. The server stores no conversation state. See [API](../api/README.md) for request limits and streaming, and [UI](../ui/README.md) for display and storage.
 
@@ -30,23 +30,13 @@ LangGraph runs **extract → merge → respond**. Answer generation runs afterwa
 | [evidence.ts](../../src/lib/evidence.ts) | Server and browser | Shared labels, clarification text, and reasons derived from ranking rules. |
 | [model.ts](../../src/lib/model.ts) | Server | Ollama calls, output checks, and extraction retries. |
 | [workflow.ts](../../src/lib/workflow.ts) | Server | Coordinate extraction, merging, calculation, and answers. |
-| [conversations.ts](../../src/lib/conversations.ts) | Browser | Conversation state, form values, stale-result checks, and save/restore logic. |
+| [conversations.ts](../../src/lib/conversations.ts) | Browser | Conversation state, stale-result checks, and save/restore logic. |
 | [turn-stream.ts](../../src/lib/turn-stream.ts) | Browser | Read progress and a validated final result, including JSON fallback. |
 | [reveal-text.ts](../../src/lib/reveal-text.ts) | Browser | Animate text, handle cancellation, and pause before showing a plan. |
 
 These boundaries separate I/O from calculation and state changes. `createWorkflow({ model, loadData })` accepts injected services so tests can run without Ollama or file access. The React hook owns browser effects.
 
 The dataset is cached per server process; failed loads can retry. Restart after replacing loaded data.
-
-### Optional configuration
-
-[Setup](../../README.md#run) needs no environment variables. To override the defaults, set these in `.env.local` and restart:
-
-| Variable | Default |
-| --- | --- |
-| `DATA_DIR` | `data/private` |
-| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` |
-| `OLLAMA_MODEL` | `qwen2.5:14b` |
 
 ## Import graphs
 

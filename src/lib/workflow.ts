@@ -30,7 +30,6 @@ import {
   pendingFieldsSchema,
   turnRequestSchema,
   turnResponseSchema,
-  type TurnRequest,
   type TurnResponse,
   type TurnStage,
 } from "./contract";
@@ -43,11 +42,11 @@ const State = new StateSchema({
   response: turnResponseSchema.nullable().default(null),
 });
 type Node = GraphNode<typeof State>;
-type Turn = { request: TurnRequest; brief: Brief; pending: BriefField[] };
+type Turn = { brief: Brief; pending: BriefField[] };
 
 /** Every answer carries the canonical brief, its open questions, and model status. */
 const turn = (
-  { request, brief, pending }: Turn,
+  { brief, pending }: Turn,
   status: TurnResponse["status"],
   explanation: string[],
   recommendation: Recommendation | null = null,
@@ -58,7 +57,7 @@ const turn = (
   pending,
   recommendation,
   explanation,
-  modelStatus: request.mode === "chat" ? "used" : "not_used",
+  modelStatus: "used",
 });
 
 /** Compile once per server module instance. All campaign state is invocation-local. */
@@ -70,7 +69,6 @@ export function createWorkflow({
   loadData: () => Promise<Dataset>;
 }) {
   const extract: Node = async ({ request, brief }, config) => {
-    if (request.mode !== "chat") return {};
     const extraction = await model.extract(request.message, brief, config.signal);
     // Field changes take precedence over a question or small-talk classification.
     if (Object.keys(extraction.patch).length || extraction.issues.length)
@@ -78,7 +76,6 @@ export function createWorkflow({
     return { extraction };
   };
   const merge: Node = ({ brief, pending, extraction }) => {
-    if (extraction && extraction.intent !== "brief") return {};
     const patch: Record<string, unknown> = {};
     const open = new Set(pending);
     for (const [field, change] of Object.entries(extraction?.patch ?? {})) {
@@ -90,6 +87,8 @@ export function createWorkflow({
       patch[field] = null;
       open.add(field);
     }
+    // An unknown advertiser name clears metadata, but never blocks planning.
+    open.delete("clientName");
     return { brief: mergeBrief(brief, patch), pending: [...open] };
   };
   const respond: Node = async (state) => {
@@ -104,7 +103,7 @@ export function createWorkflow({
       : [explainClarification({
           brief: state.brief,
           changed: Object.keys(extraction?.patch ?? {}) as BriefField[],
-          issues: extraction?.issues,
+          issues: extraction?.issues.filter(({ field }) => pending.includes(field)),
           pending,
           missing: missingFields(state.brief),
         })];
@@ -116,11 +115,7 @@ export function createWorkflow({
     .addNode("extract", extract)
     .addNode("merge", merge)
     .addNode("respond", respond)
-    .addConditionalEdges(
-      START,
-      (s) => (s.request.mode === "chat" ? "extract" : "merge"),
-      ["extract", "merge"],
-    )
+    .addEdge(START, "extract")
     .addEdge("extract", "merge")
     .addEdge("merge", "respond")
     .addEdge("respond", END)
@@ -132,11 +127,11 @@ export function createWorkflow({
     onProgress?: (stage: TurnStage) => void,
   ): Promise<TurnResponse> => {
     const request = turnRequestSchema.parse(input);
-    const pending = request.mode === "chat" ? request.pending : [];
+    const pending = request.pending;
     const deadline = AbortSignal.timeout(85_000);
     const operation = signal ? AbortSignal.any([signal, deadline]) : deadline;
     try {
-      onProgress?.(request.mode === "chat" ? "extract" : "validate");
+      onProgress?.("extract");
       const updates = await graph.stream(
         { request, brief: request.brief, pending },
         {
@@ -156,7 +151,7 @@ export function createWorkflow({
         if ("respond" in update) response = update.respond?.response ?? null;
       }
       const verified = turnResponseSchema.parse(response);
-      if (request.mode !== "chat" || !shouldAnswer) return verified;
+      if (!shouldAnswer) return verified;
       // Answer after calculation, so a generation timeout cannot discard the verified plan.
       try {
         operation.throwIfAborted();
@@ -182,9 +177,9 @@ export function createWorkflow({
       const explanation =
         code === "internal"
           ? "The recommendation could not be completed. Check the dataset and try again."
-          : `${modelErrors[code]} Your previous brief is preserved; the new message was not applied. You can edit the brief and calculate without a model.`;
+          : `${modelErrors[code]} Your previous brief is preserved; the new message was not applied. Please try again.`;
       return {
-        ...turn({ request, brief: request.brief, pending }, "error", [
+        ...turn({ brief: request.brief, pending }, "error", [
           explanation,
         ]),
         modelStatus: "unavailable",

@@ -11,7 +11,7 @@ const briefs = live ? await loadExampleBriefs() : [];
 const expected = ["P003", "P004", "P006", "P003", "P006", "vertical", "kpi"];
 const clientNames = ["Acme Shoes", "Burger Bazaar", "CineVerse", "Stellar Bank", "Wanderlust Air", null, null];
 async function chat(body: object): Promise<TurnResponse> {
-  const json = JSON.stringify({ mode: "chat", ...body });
+  const json = JSON.stringify(body);
   const result = await (await POST(chatRequest(json))).json();
   expect(result.modelStatus).toBe("used");
   return result;

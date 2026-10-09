@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createWorkspaceSaver,
   emptyWorkspace,
-  formFromBrief,
   historyChats,
   newConversation,
   restoreWorkspace,
@@ -20,7 +19,7 @@ const result: TurnResponse = {
   brief,
   missing: [],
   pending: [],
-  modelStatus: "not_used",
+  modelStatus: "used",
   recommendation: recommend(brief, syntheticData()),
   explanation: ["A verified recommendation."],
 };
@@ -36,7 +35,6 @@ const start: WorkspaceAction = {
   type: "start",
   id: "first",
   requestId: "request-1",
-  mode: "chat",
   message: "Finance in the US, $1000, CTR",
   now: 2,
 };
@@ -80,23 +78,17 @@ describe("saved conversations", () => {
       resolve,
       draft("Make it $2,000"),
       newChat("second"),
-      {
-        type: "edit",
-        id: "second",
-        field: "vertical",
-        value: "Retail",
-        now: 6,
-      },
+      { type: "draft", id: "second", value: "Retail campaign", now: 6 },
       { type: "switch", id: "first" },
     );
     expect(state.activeId).toBe("first");
     expect(first(state)).toMatchObject({
-      form: formFromBrief(brief),
+      brief,
       result,
       composer: "Make it $2,000",
     });
     expect(first(state).messages).toHaveLength(2);
-    expect(state.chats[1].form.vertical).toBe("Retail");
+    expect(state.chats[1].composer).toBe("Retail campaign");
     expect(state.chats[1].result).toBeNull();
   });
   it("reuses a pristine new chat and never accumulates empty history entries", () => {
@@ -133,26 +125,6 @@ describe("saved conversations", () => {
     expect(first(state).messages.at(-1)?.text).toBe("A verified recommendation.");
     expect(state.chats[1].messages).toEqual([]);
   });
-  it("invalidates a plan immediately on edit and ignores the obsolete response", () => {
-    const state = workspace(
-      start,
-      resolve,
-      { ...start, requestId: "request-2", now: 4 },
-      { type: "edit", id: "first", field: "budget", value: "2000", now: 5 },
-      { ...progress, requestId: "request-2" },
-      { ...resolve, requestId: "request-2", now: 6 },
-    );
-    expect(first(state)).toMatchObject({
-      result: null,
-      dirty: true,
-      request: null,
-      form: { budget: "2000" },
-    });
-    expect(first(state).messages).toHaveLength(3);
-    expect(first(state).messages[1].basedOnRevision).toBeLessThan(
-      first(state).revision,
-    );
-  });
   it("keeps earlier plan messages current until the brief changes", () => {
     const question = {
       ...start,
@@ -170,13 +142,10 @@ describe("saved conversations", () => {
     const plans = () => first(state).messages.filter((m) => m.basedOnRevision);
     expect(plans().map((m) => m.basedOnRevision)).toEqual([1, 1]);
     expect(first(state).revision).toBe(1);
-    state = apply(state, {
-      type: "edit",
-      id: "first",
-      field: "budget",
-      value: "2000",
-      now: 6,
-    });
+    state = apply(state,
+      { ...start, requestId: "request-3", now: 6 },
+      { ...resolve, requestId: "request-3", response: { ...result, brief: { ...brief, budget: 2000 } }, now: 7 },
+    );
     expect(first(state).revision).toBe(2);
   });
   it("ignores late progress, completion or failure from an older request", () => {
@@ -243,6 +212,16 @@ describe("saved conversations", () => {
     });
     expect(first(restoreSaved(clarifying)).pending).toEqual(["impressionGoal"]);
   });
+  it.each(["used", "not_used"] as const)("restores earlier form-based saves with model status %s", (modelStatus) => {
+    const response = { ...result, modelStatus };
+    const state = workspace(start, { ...resolve, response });
+    const { brief: savedBrief, ...savedChat } = first(state);
+    const form = Object.fromEntries(Object.entries(savedBrief).map(([key, value]) => [key, String(value)]));
+    const restored = restoreSaved({ ...state, chats: [{ ...savedChat, form: { ...form, impressionGoal: "0" } }] });
+    expect(first(restored).brief).toEqual({ ...brief, impressionGoal: null });
+    expect(first(restored).result).toEqual(response);
+    expect(first(restored)).not.toHaveProperty("form");
+  });
   it("rejects corrupt or unsupported stores instead of silently replacing them", () => {
     expect(restoreWorkspace(null)).toBeNull();
     expect(() => restoreWorkspace("invalid json")).toThrow();
@@ -253,11 +232,11 @@ describe("saved conversations", () => {
   });
   it("discards invalid or mismatched saved results while preserving the brief and chat", () => {
     const state = workspace(start, resolve);
-    state.chats[0].form.budget = "2000";
+    state.chats[0].brief = { ...brief, budget: 2000 };
     expect(first(restoreSaved(state))).toMatchObject({
       result: null,
       dirty: true,
-      form: { budget: "2000" },
+      brief: { budget: 2000 },
     });
     const invalid = JSON.parse(JSON.stringify(workspace(start, resolve)));
     invalid.chats[0].result.recommendation.recommended.ctr = "invented";

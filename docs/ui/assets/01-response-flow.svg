@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="ui-response-flow-title ui-response-flow-desc" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
 <title id="ui-response-flow-title">From submission to a visible plan</title>
-<desc id="ui-response-flow-desc">The UI sends a request, reads progress and the completed result, reveals the reply, and pauses one second before applying a matching result and showing the plan. Conversation state is saved to localStorage; per-character display updates remain temporary. Stop or edit cancels work, and reduced motion or hidden chats skip the animation.</desc>
+<desc id="ui-response-flow-desc">The UI sends a request, reads progress and the completed result, reveals the reply, and pauses one second before applying a matching result and showing the plan. Conversation state is saved to localStorage; per-character display updates remain temporary. Stop cancels work, and reduced motion or hidden chats skip the animation.</desc>
 <rect width="1280" height="720" fill="#ffffff"/>
 <defs>
 <marker id="ui-response-flow-muted" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#68768a"/></marker>
@@ -19,7 +19,7 @@
 <rect x="532" y="320" width="160" height="20" fill="#ffffff"/>
 <text x="532" y="336" font-size="12" fill="#68768a" font-weight="500">START / PROGRESS</text>
 <g data-node="submit"><rect x="48" y="152" width="240" height="112" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
-<text x="64" y="184" font-size="20" fill="#263343" font-weight="500">Send chat or brief</text>
+<text x="64" y="184" font-size="20" fill="#263343" font-weight="500">Send message</text>
 <text x="64" y="212" font-size="16" fill="#68768a" font-weight="400">workspace.tsx</text>
 <text x="64" y="236" font-size="16" fill="#68768a" font-weight="400">User submits a turn</text>
 </g>
@@ -53,5 +53,5 @@
 <text x="416" y="620" font-size="16" fill="#68768a" font-weight="400">All state changes · 300 ms delay</text>
 </g>
 <text x="48" y="664" font-size="16" fill="#4878b8" font-weight="400">Browser code throughout. Text animation stays outside saved conversation state.</text>
-<text x="48" y="692" font-size="16" fill="#68768a" font-weight="400">Stop/edit cancels work. Reduced motion or hidden chats skip the reveal and pause.</text>
+<text x="48" y="692" font-size="16" fill="#68768a" font-weight="400">Stop cancels work. Reduced motion or hidden chats skip the reveal and pause.</text>
 </svg>

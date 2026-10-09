@@ -7,7 +7,7 @@ export const financeBrief = {
   kpi: "ctr",
   budget: 1000,
 } as const;
-// A new chat sends every field, all null.
+// An empty brief with every field unset.
 export const blankBrief = {
   clientName: null,
   vertical: null,

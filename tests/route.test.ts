@@ -15,14 +15,14 @@ const streamRequest = (input: unknown) => {
   return req;
 };
 beforeEach(() => {
-  extract.mockReset();
+  extract.mockReset().mockResolvedValue({ intent: "brief", patch: {}, issues: [] });
   answer.mockReset().mockResolvedValue("The selected product leads on your chosen KPI.");
 });
 
 describe("HTTP boundary", () => {
   it("accepts a same-origin browser even if Next normalizes the internal URL", async () => {
     const response = await POST(
-      request(JSON.stringify({ mode: "brief", brief: {} })),
+      request(JSON.stringify({ brief: {}, message: "Hello" })),
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
@@ -35,9 +35,11 @@ describe("HTTP boundary", () => {
     ["cross-origin JSON", () => request("{}", "https://unrelated.example"), 403],
     ["oversized body", () => request("x".repeat(64001)), 413],
     ["malformed JSON", () => request("{"), 400],
-    ["invalid brief", () => request('{"mode":"brief","brief":{"budget":-2}}'), 400],
-    ["unexpected input", () => request('{"mode":"brief","brief":{},"rankings":[]}'), 400],
-    ["invalid streamed brief", () => streamRequest({ mode: "brief", brief: { budget: -2 } }), 400],
+    ["invalid brief", () => request('{"brief":{"budget":-2},"message":"Hello"}'), 400],
+    ["unexpected input", () => request('{"brief":{},"message":"Hello","rankings":[]}'), 400],
+    ["empty message", () => streamRequest({ brief: {}, message: "" }), 400],
+    ["invalid streamed brief", () => streamRequest({ brief: { budget: -2 }, message: "Hello" }), 400],
+    ["text body", () => new Request("http://localhost:3000/api/chat", { method: "POST", body: "Hello" }), 415],
   ] as const)("rejects %s before model work or streaming", async (_, makeRequest, status) => {
     const response = await POST(makeRequest());
     expect(response.status).toBe(status);
@@ -52,7 +54,7 @@ describe("HTTP boundary", () => {
       Array.from({ length: CHAT_HISTORY_LIMIT + 1 }, () => ({ role: "user", text: "hello" })),
       [{ role: "user", text: "x".repeat(CHAT_HISTORY_TEXT_LIMIT + 1) }],
     ]) {
-      const response = await POST(streamRequest({ mode: "chat", brief: {}, message: "why?", history }));
+      const response = await POST(streamRequest({ brief: {}, message: "why?", history }));
       expect(response.status).toBe(400);
     }
     expect(extract).not.toHaveBeenCalled();
@@ -64,14 +66,14 @@ describe("HTTP boundary", () => {
       role: "user", text: "\u0001".repeat(CHAT_HISTORY_TEXT_LIMIT),
     }));
     const message = "\u0001".repeat(4000);
-    const response = await POST(request(JSON.stringify({ mode: "chat", brief: {}, message, history })));
+    const response = await POST(request(JSON.stringify({ brief: {}, message, history })));
     expect(response.status).toBe(200);
     expect(answer).toHaveBeenCalledWith(message, expect.any(Object), history, expect.any(AbortSignal));
   });
   it("streams progress before the model finishes, followed by the same validated JSON result", async () => {
     const model = Promise.withResolvers<unknown>();
     extract.mockReturnValue(model.promise);
-    const input = { mode: "chat", brief: {}, message: "hello" };
+    const input = { brief: {}, message: "hello" };
     const response = await POST(streamRequest(input));
     expect(response.headers.get("content-type")).toBe("application/x-ndjson");
     expect(response.headers.get("cache-control")).toContain("no-transform");
@@ -114,7 +116,7 @@ describe("HTTP boundary", () => {
       });
       const cancellation = new AbortController();
       const req = new Request(
-        streamRequest({ mode: "chat", brief: {}, message: "hello" }),
+        streamRequest({ brief: {}, message: "hello" }),
         { signal: cancellation.signal },
       );
       const response = await POST(req);
@@ -134,7 +136,7 @@ describe("HTTP boundary", () => {
   it("delivers model failure as a terminal error result after progress", async () => {
     extract.mockRejectedValue(new ModelError("invalid_output"));
     const response = await POST(
-      streamRequest({ mode: "chat", brief: {}, message: "hello" }),
+      streamRequest({ brief: {}, message: "hello" }),
     );
     const events = (await response.text())
       .trim()
