@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="ui-response-flow-title ui-response-flow-desc" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
+<title id="ui-response-flow-title">From submission to a visible plan</title>
+<desc id="ui-response-flow-desc">The UI sends a request, reads progress and the completed result, reveals the reply, and pauses one second before applying a matching result and showing the plan. Conversation state is saved to localStorage; per-character display updates remain temporary. Stop or edit cancels work, and reduced motion or hidden chats skip the animation.</desc>
+<rect width="1280" height="720" fill="#ffffff"/>
+<defs>
+<marker id="ui-response-flow-muted" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#68768a"/></marker>
+<marker id="ui-response-flow-blue" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#4878b8"/></marker>
+<marker id="ui-response-flow-orange" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#b45d14"/></marker>
+</defs>
+<text x="48" y="48" font-size="28" fill="#263343" font-weight="500">From submission to a visible plan</text>
+<text x="48" y="80" font-size="16" fill="#68768a" font-weight="400">Successful recommendation path · a clarification or error does not open a plan.</text>
+<path data-source="submit" data-target="request" d="M288 208 H400" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#ui-response-flow-blue)"/>
+<path data-source="request" data-target="read" d="M720 208 H880" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#ui-response-flow-blue)"/>
+<path data-source="read" data-target="reveal" d="M1056 264 V392" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#ui-response-flow-blue)"/>
+<path data-source="reveal" data-target="state" d="M880 452 H744" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#ui-response-flow-blue)"/>
+<path data-source="state" data-target="display" d="M400 452 H288" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#ui-response-flow-blue)"/>
+<path data-source="request" data-target="state" d="M520 264 V392" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#ui-response-flow-muted)"/>
+<path data-source="state" data-target="storage" d="M568 512 V560" fill="none" stroke="#68768a" stroke-width="2" marker-end="url(#ui-response-flow-muted)"/>
+<rect x="532" y="320" width="160" height="20" fill="#ffffff"/>
+<text x="532" y="336" font-size="12" fill="#68768a" font-weight="500">START / PROGRESS</text>
+<g data-node="submit"><rect x="48" y="152" width="240" height="112" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="64" y="184" font-size="20" fill="#263343" font-weight="500">Send chat or brief</text>
+<text x="64" y="212" font-size="16" fill="#68768a" font-weight="400">workspace.tsx</text>
+<text x="64" y="236" font-size="16" fill="#68768a" font-weight="400">User submits a turn</text>
+</g>
+<g data-node="request"><rect x="400" y="152" width="320" height="112" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="416" y="184" font-size="24" fill="#263343" font-weight="500">Start request</text>
+<text x="416" y="212" font-size="16" fill="#68768a" font-weight="400">use-conversations.ts</text>
+<text x="416" y="236" font-size="16" fill="#68768a" font-weight="400">Record message; hide old plan</text>
+</g>
+<g data-node="read"><rect x="880" y="152" width="352" height="112" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="896" y="184" font-size="24" fill="#263343" font-weight="500">Read API response</text>
+<text x="896" y="212" font-size="16" fill="#68768a" font-weight="400">turn-stream.ts</text>
+<text x="896" y="236" font-size="16" fill="#68768a" font-weight="400">Progress + validated final result</text>
+</g>
+<g data-node="reveal"><rect x="880" y="392" width="352" height="120" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="896" y="424" font-size="24" fill="#263343" font-weight="500">Reveal, then pause</text>
+<text x="896" y="452" font-size="16" fill="#68768a" font-weight="400">reveal-text.ts</text>
+<text x="896" y="476" font-size="16" fill="#68768a" font-weight="400">Character by character → 1 s</text>
+</g>
+<g data-node="state"><rect x="400" y="392" width="344" height="120" rx="6" fill="#f4f6f8" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="416" y="424" font-size="24" fill="#263343" font-weight="500">Update chat state</text>
+<text x="416" y="452" font-size="16" fill="#68768a" font-weight="400">conversations.ts</text>
+<text x="416" y="476" font-size="16" fill="#68768a" font-weight="400">Apply matching request IDs</text>
+</g>
+<g data-node="display"><rect x="48" y="392" width="240" height="120" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="64" y="424" font-size="20" fill="#263343" font-weight="500">Show reply + plan</text>
+<text x="64" y="452" font-size="16" fill="#68768a" font-weight="400">workspace.tsx</text>
+<text x="64" y="476" font-size="16" fill="#68768a" font-weight="400">plan-panel.tsx</text>
+</g>
+<g data-node="storage"><rect x="400" y="560" width="344" height="72" rx="6" fill="#f4f6f8" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="416" y="592" font-size="20" fill="#263343" font-weight="500">localStorage</text>
+<text x="416" y="620" font-size="16" fill="#68768a" font-weight="400">All state changes · 300 ms delay</text>
+</g>
+<text x="48" y="664" font-size="16" fill="#4878b8" font-weight="400">Browser code throughout. Text animation stays outside saved conversation state.</text>
+<text x="48" y="692" font-size="16" fill="#68768a" font-weight="400">Stop/edit cancels work. Reduced motion or hidden chats skip the reveal and pause.</text>
+</svg>

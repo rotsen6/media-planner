@@ -1,137 +1,100 @@
 # Media planner library
 
-`src/lib` separates campaign rules, external services, and conversation behavior. TypeScript validates the brief and computes the plan. The LLM extracts user intent and explains calculated evidence; it does not select or allocate products.
+Overview: [request lifecycle](../lifecycle/README.md).
+
+`src/lib` holds planning rules, model calls, and conversation state. TypeScript calculates and ranks plans. The LLM reads campaign details and explains the calculated results.
 
 ## Following a request
 
-![A chat request passes through validation, the three-node workflow, optional grounded answering, and browser presentation](assets/01-request-flow.svg)
+![Request flow from validation through LangGraph to the browser](assets/01-request-flow.svg)
 
-1. **Prepare the request.** [use-conversations.ts](../../src/components/use-conversations.ts) sends the latest message, canonical brief, unresolved fields, and up to six earlier messages, each limited to 1,000 characters. Brief-editor requests carry only the explicit brief.
-2. **Validate the boundary.** The [chat route](../../src/app/api/chat/route.ts) bounds the body, checks its origin/content type, and parses [contract.ts](../../src/lib/contract.ts). It supplies a cancellation signal and composes `createWorkflow` with `createOllamaModel` and `loadDataset`.
-3. **Extract — LLM, then code.** Chat enters the graph's `extract` node. [model.ts](../../src/lib/model.ts) asks Ollama for quoted field changes, issues, and intent. The adapter validates and normalizes the result before returning a typed extraction. Any field change or issue takes precedence over a question classification. Manual briefs skip this node.
-4. **Merge — code.** [workflow.ts](../../src/lib/workflow.ts) applies validated changes through [brief.ts](../../src/lib/brief.ts). Omitted fields keep their values; `null` clears them. An unusable correction clears the old value and leaves a pending question.
-5. **Respond — code.** An incomplete or pending brief gets a clarification. A complete brief loads indexed evidence through the injected `loadData` function, then [recommend.ts](../../src/lib/recommend.ts) computes and validates the plan. [evidence.ts](../../src/lib/evidence.ts) supplies a deterministic summary.
-6. **Explain a follow-up — optional LLM.** After the graph finishes, a pure question or small-talk turn calls `model.answer`. It receives current calculated evidence, shared constraint/ranking reasons, and recent messages for references. Brief changes and manual calculations skip this additional answer call.
-7. **Return a verified result.** Answering can replace the first explanation paragraph, never the calculated plan. If generation fails, the verified result survives with its existing summary and a visible fallback notice. Earlier extraction failure instead preserves the previous brief and returns an error.
-8. **Present and save.** [turn-stream.ts](../../src/lib/turn-stream.ts) validates progress events and the final response. [reveal-text.ts](../../src/lib/reveal-text.ts) reveals the completed text character by character; animated recommendation results (including infeasible reports) pause one second before resolution. Reduced-motion and background handling can bypass this delay. [conversations.ts](../../src/lib/conversations.ts) applies the result only to the matching request and supports browser persistence.
+1. **Send.** [use-conversations.ts](../../src/components/use-conversations.ts) sends the message, current brief, unresolved fields, and recent history. Manual entry sends an explicit brief.
+2. **Validate.** The [chat route](../../src/app/api/chat/route.ts) checks the request and connects the workflow to the dataset, model, and cancellation signal.
+3. **Extract — LLM, then code.** [model.ts](../../src/lib/model.ts) sends Ollama the latest message and current brief. It returns intent and field changes with source quotes; code checks the output. Field changes take priority over questions; manual entry skips extraction.
+4. **Merge — code.** [workflow.ts](../../src/lib/workflow.ts) applies changes through [brief.ts](../../src/lib/brief.ts). Omitted fields stay unchanged; `null` clears them. Values flagged as unusable clear the old field and trigger a question.
+5. **Calculate — code.** Missing or unresolved fields get a clarification. Otherwise, [recommend.ts](../../src/lib/recommend.ts) calculates and validates a plan; [evidence.ts](../../src/lib/evidence.ts) writes its summary.
+6. **Answer — optional LLM.** Questions and small talk get a tailored reply using the current evidence and recent history. Brief changes and manual calculations skip this call.
+7. **Return.** Generated text can replace the summary, never the plan. Failed answer generation keeps the calculated result with a fallback notice. Failed extraction preserves the previous brief.
+8. **Display and save.** The browser reveals the reply, pauses before showing the plan, and saves the conversation. Request IDs prevent late responses from overwriting newer edits.
 
-The LangGraph itself has **three nodes: extract → merge → respond**. Optional answer generation is outside it, so a generation timeout cannot discard an already calculated plan. Each invocation carries its own campaign state; there is no server-side conversation store or graph checkpointer.
+LangGraph runs **extract → merge → respond**. Answer generation runs afterward, so its failure cannot discard a calculated plan. The server stores no conversation state. See [API](../api/README.md) for request limits and streaming, and [UI](../ui/README.md) for display and storage.
 
-The API streams progress plus one completed result as NDJSON. Ollama is called with `stream: false`; the character animation is browser presentation, not model token streaming. Cancellation reaches the HTTP/model operation and the text reveal. Reduced-motion or hidden-chat handling can bypass animation.
+## Modules
 
-## The ten modules
-
-| Module | Main interface | Responsibility and why it is separate |
+| File | Used by | Responsibility |
 | --- | --- | --- |
-| [brief.ts](../../src/lib/brief.ts) | `briefSchema`, `completeBriefSchema`, `mergeBrief`, `missingFields` | Shared field vocabulary, bounds, and update semantics. Forms, extraction, and calculation agree on one campaign definition. |
-| [contract.ts](../../src/lib/contract.ts) | Request/response/event schemas; `readText`, `readChunks` | Shared wire format and bounded stream readers. Browser and server validate the same messages without duplicating protocol rules. |
-| [data.ts](../../src/lib/data.ts) | `parseDataset`, `loadDataset`, `loadExampleBriefs` | Validate CSVs, aggregate historical counts, build lookup maps, and fingerprint evidence. File I/O and data cleanup stay outside the calculator. |
-| [recommend.ts](../../src/lib/recommend.ts) | `recommend`, `validateRecommendation`, `comparePlans`, `RANKING_POLICY` | Pure feasibility, ranking, and allocation rules. One comparison policy also explains ties; no model, I/O, or session state participates. |
-| [evidence.ts](../../src/lib/evidence.ts) | `productReason`, `alternativeReason`, `explainRecommendation`, `answerEvidence` | Shared formatting, clarification text, and evidence explanations. UI and LLM receive reasons derived from the actual ranking rules. |
-| [model.ts](../../src/lib/model.ts) | `LanguageModel`, `createOllamaModel`, `validateExtraction` | Ollama transport, extraction validation, and its retry budget. Callers receive validated changes or an error; injectable HTTP keeps failure tests local. |
-| [workflow.ts](../../src/lib/workflow.ts) | `createWorkflow({ model, loadData })` | Coordinates extraction, brief state, calculation, and optional answering. Injected services keep orchestration tests independent of model/file availability. |
-| [conversations.ts](../../src/lib/conversations.ts) | `workspaceReducer`, `restoreWorkspace`, `createWorkspaceSaver` | Conversation state, form conversion, revision checks, recovery, and debounced saving. The React hook owns browser effects; this module owns state transitions. |
-| [turn-stream.ts](../../src/lib/turn-stream.ts) | `readTurnResponse` | Reads NDJSON progress and a final validated result, with JSON fallback. Keeps network framing and incomplete-response handling out of components. |
-| [reveal-text.ts](../../src/lib/reveal-text.ts) | `revealText` | Cancellable, grapheme-aware text timing. Presentation can change without changing request processing or stored conversation state. |
+| [brief.ts](../../src/lib/brief.ts) | Server and browser | Campaign fields, validation, and merge rules. |
+| [contract.ts](../../src/lib/contract.ts) | Server and browser | Request, response, and progress schemas; bounded stream readers. |
+| [data.ts](../../src/lib/data.ts) | Server | Read and validate CSVs, aggregate history, index and fingerprint the dataset. |
+| [recommend.ts](../../src/lib/recommend.ts) | Server and browser | Pure calculation, ranking, allocation, and result schemas. Calculation runs on the server. |
+| [evidence.ts](../../src/lib/evidence.ts) | Server and browser | Shared labels, clarification text, and reasons derived from ranking rules. |
+| [model.ts](../../src/lib/model.ts) | Server | Ollama calls, output checks, and extraction retries. |
+| [workflow.ts](../../src/lib/workflow.ts) | Server | Coordinate extraction, merging, calculation, and answers. |
+| [conversations.ts](../../src/lib/conversations.ts) | Browser | Conversation state, form values, stale-result checks, and save/restore logic. |
+| [turn-stream.ts](../../src/lib/turn-stream.ts) | Browser | Read progress and a validated final result, including JSON fallback. |
+| [reveal-text.ts](../../src/lib/reveal-text.ts) | Browser | Animate text, handle cancellation, and pause before showing a plan. |
+
+These boundaries separate I/O from calculation and state changes. `createWorkflow({ model, loadData })` accepts injected services so tests can run without Ollama or file access. The React hook owns browser effects.
+
+The dataset is cached per server process; failed loads can retry. Restart after replacing loaded data.
+
+### Optional configuration
+
+[Setup](../../README.md#run) needs no environment variables. To override the defaults, set these in `.env.local` and restart:
+
+| Variable | Default |
+| --- | --- |
+| `DATA_DIR` | `data/private` |
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` |
+| `OLLAMA_MODEL` | `qwen2.5:14b` |
 
 ## Import graphs
 
-These diagrams show **direct source imports**, with arrows from importer to dependency. They do not show call order, tree-shaken bundle size, or every transitive dependency. Dashed edges are type-only imports and disappear at runtime.
+Arrows point from a file to its direct dependency. Dashed arrows are type-only imports, removed at runtime. These show dependencies, not execution order.
 
-### Orchestration and model dependencies
+![Workflow and model dependencies](assets/02-orchestration-imports.svg)
 
-![Runtime imports from workflow and model, plus the three internal type-only edges](assets/02-orchestration-imports.svg)
+![Dependencies among the remaining library modules](assets/03-shared-imports.svg)
 
-`workflow.ts` knows the `Dataset` type but receives the loading function from the route. `recommend.ts` also imports only that type. Neither static dependency brings Node file I/O into shared browser code. The third type-only edge lets `evidence.ts` describe a `TurnResponse` without a runtime dependency on `contract.ts`.
+The library has no import cycles. `workflow` and `recommend` use only the `Dataset` type, keeping file I/O out of shared code. Main dependencies are Zod for validation, `csv-parse` for CSVs, and LangGraph for the workflow.
 
-### Shared modules and supporting dependencies
+## Planning rules
 
-![The remaining runtime imports between library modules; reveal-text has no imports](assets/03-shared-imports.svg)
+The brief requires vertical, KPI, geography, and budget. Advertiser name and minimum impressions are optional. [brief.ts](../../src/lib/brief.ts) defines supported values.
 
-There are **18 internal runtime import edges and three type-only edges**, with no cycles in the current source graph. The two diagrams split those edges for readability. External dependencies are listed below instead of repeated around every node.
+- **History:** CTR and in-view rate divide summed clicks or viewable impressions by summed impressions for each product/vertical. Row percentages are never averaged.
+- **Budget:** a single product delivers `min(budget / CPM × 1,000, available inventory)`. It spends up to the budget or inventory limit. Minimum impressions are an eligibility threshold, not a target that stops spending. Constraint checks use unrounded values.
+- **Ranking:** eligible single products rank by historical KPI, then higher inventory confidence, then stable product ID. The app uses `inventory_risk` as confidence; it never scales inventory or represents delivery probability.
+- **Pairs:** considered only when no single meets a supplied minimum. Each pair maximizes its impression-weighted KPI within budget and inventory limits. The calculator checks the feasible intersections of those constraints. Ties prefer greater spend, then stable ID.
+- **Result:** one recommendation, up to two alternatives, and each product's eligibility and comparison reasons. [recommend.ts](../../src/lib/recommend.ts) owns the ranking policy; `evidence.ts` uses it to explain decisions.
 
-| Module | Runtime local imports | Type-only local imports | External imports |
-| --- | --- | --- | --- |
-| `brief.ts` | — | — | `zod` |
-| `contract.ts` | `brief`, `recommend` | — | `zod` |
-| `data.ts` | `brief` | — | `csv-parse/sync`, `zod`; Node `crypto`, `fs/promises`, `path` |
-| `recommend.ts` | `brief` | `data` | `zod` |
-| `evidence.ts` | `brief`, `recommend` | `contract` | — |
-| `model.ts` | `brief`, `contract`, `recommend` | — | `zod` |
-| `workflow.ts` | `brief`, `contract`, `evidence`, `model`, `recommend` | `data` | `@langchain/langgraph` |
-| `conversations.ts` | `brief`, `contract`, `evidence` | — | `zod` |
-| `turn-stream.ts` | `contract` | — | — |
-| `reveal-text.ts` | — | — | — |
+History has no geography or dates; inventory has no time dimension. Historical performance is not guaranteed, and summed impressions are not unique audience reach.
 
-A module imported for both values and types appears only in the runtime column. Standard APIs such as `fetch`, `AbortSignal`, and `Intl` are globals, not package imports.
+Source quotes help check extraction but cannot prove the model understood a message. Generated explanations can also be wrong. Users can inspect the evidence and correct the brief.
 
-## Runtime boundaries
+## Cost and failure handling
 
-- **Server-used:** `data`, `model`, and `workflow`. The chat route constructs their dependencies once; each turn receives fresh state. Dataset loading caches a promise per server process, shares concurrent loads, and retries after a failed load. Restart after replacing successfully loaded input files.
-- **Shared:** `brief`, `contract`, `recommend`, and `evidence`. They have no Node I/O. Calculation runs on the server; browser code also imports result schemas, labels, policy text, and explanation helpers.
-- **Browser-used:** `conversations`, `turn-stream`, and `reveal-text`. Their logic is testable without mounting the UI. Actual `localStorage`, fetch, and React effects live in [use-conversations.ts](../../src/components/use-conversations.ts).
+For **P** products, with fixed vertical and geography lists:
 
-These describe current usage, not an enforced `server-only` or `client-only` marker on every file. Follow-up history helps resolve phrases such as “that alternative”; it cannot replace the canonical brief or current calculated evidence.
-
-The application connects to the library through these callers. Their imports are outside the two library-only graphs above.
-
-| Caller | Direct library imports |
-| --- | --- |
-| [Chat route](../../src/app/api/chat/route.ts) | `contract`, `data`, `model`, `workflow` |
-| [Status route](../../src/app/api/status/route.ts) | `data`, `model` |
-| [Server page](../../src/app/page.tsx) | `data` for example briefs |
-| [Plan panel](../../src/components/plan-panel.tsx) | `brief`, `evidence`, `recommend`; `conversations` types only |
-| [Conversation hook](../../src/components/use-conversations.ts) | `conversations`, `contract`, `turn-stream`, `reveal-text` |
-| [Workspace](../../src/components/workspace.tsx) | `contract`, `conversations` |
-
-## Where decisions belong
-
-| Decision | Owner |
-| --- | --- |
-| Recognize an explicitly requested field change or conversational intent | LLM extraction, followed by schema, quote, and application checks in `model` |
-| Required fields, valid values, and clear-versus-preserve behavior | `brief`, enforced during `workflow` merge |
-| Historical CTR/viewability and evidence integrity | `data`: ratios of summed counts, validated joins, indexed evidence |
-| Eligibility, impressions, spend, selected products, and ordering | `recommend`: deterministic arithmetic, constraints, and ranking |
-| Explain a follow-up in natural language | LLM answer using verified result and `evidence` annotations |
-| Keep or replace a visible/saved result | `conversations`, coordinated by the UI hook |
-
-Required fields are vertical, KPI, geography, and budget; advertiser name and minimum impressions are optional. Supported values are Retail/Finance/Travel/QSR/Entertainment, CTR/in-view rate, and US/EMEA/APAC.
-
-- **Benchmarks:** divide summed clicks or viewable impressions by total impressions for each product/vertical; do not average row rates.
-- **Budget:** a single product receives `min(budget / CPM × 1,000, available inventory)`. Report spend and unused budget without rounding before constraint checks. Minimum impressions are a feasibility threshold, not a target that stops spending.
-- **Singles:** rank by historical KPI, then forecast confidence, then stable ID. Use raw inventory; `inventory_risk` means confidence, not a delivery probability or inventory multiplier.
-- **Pairs:** consider them only when no single meets a supplied minimum goal. Maximize `(x × rateA + y × rateB) / (x + y)` within budget, inventory, and the goal by evaluating feasible vertices. Ties prefer spend, then stable ID.
-- **Output:** one recommendation, up to two feasible alternatives, and every product's rejection reason. Shared policy text lives beside the comparator in [recommend.ts](../../src/lib/recommend.ts).
-
-History has no geography or dates; inventory has no time dimension. Historical performance is not guaranteed. Summed product impressions are not deduplicated audience reach.
-
-The model cannot overwrite result fields through the answer interface, but generated prose can still be wrong. Structured extraction and source quotes also do not prove semantic correctness. The adapter uses JSON mode because schema-constrained generation omitted explicitly requested fields in live checks. The editable brief and evidence display let users inspect and correct interpretation.
-
-## Cost and limits
-
-Let **P** be product count. Vertical and geography lists are currently fixed.
-
-| Work | Time / space | Why |
+| Work | Time | Space |
 | --- | --- | --- |
-| Dataset loading | Linear in input bytes/rows plus completeness checks; linear working space | History is grouped and aggregated once; request-time lookups use maps. |
-| Single-product recommendation | O(P log P) time; O(P) space | Evaluate each product, then sort candidates and evaluated products. |
-| Two-product fallback | O(P² log P) time; O(P²) space | Each pair tries at most 15 constraint intersections; pair winners are collected and sorted. |
-| Follow-up evidence | O(P) additional work and space | Add existing constraint/ranking reasons to evaluated products; no second allocation calculation. |
+| Load and index data | Linear in input, plus completeness checks | Linear in input |
+| Rank single products | O(P log P) | O(P) |
+| Evaluate and rank pairs | O(P² log P) | O(P²) |
+| Prepare follow-up evidence | O(P) | O(P) |
 
-Model latency dominates conversational turns. Each HTTP call allows 45 seconds, within one 85-second turn deadline. The adapter allows **at most two extraction calls total**: a transient failure retries the same prompt; malformed output retries with the existing schema included. Both attempts receive the same validation. The graph adds no retry or extraction timer. Permanent HTTP failures, timeouts, and cancellation are not retried. Answers get one call and fall back to the verified summary. Request/history/model-output limits are enforced separately by [contract.ts](../../src/lib/contract.ts), the [route](../../src/app/api/chat/route.ts), and [model.ts](../../src/lib/model.ts).
+Each pair checks at most 15 constraint intersections. History is aggregated once; requests use indexed lookups. Model generation dominates chat latency.
 
-## Tests and change map
+A turn has an 85-second deadline; each model call has 45 seconds. Extraction allows at most two calls: retry transient failures, or retry invalid output with the schema included. Both attempts use the same checks. Permanent HTTP errors, timeouts, and cancellation are not retried. Answers get one call, then fall back to the calculated summary.
 
-| If changing… | Start here | Check |
-| --- | --- | --- |
-| Campaign fields or CSV input | `brief`, `data`, then affected contracts/forms | [data.test.ts](../../tests/data.test.ts); [dataset.test.ts](../../tests/dataset.test.ts) for supplied-data regressions |
-| Ranking, allocation, or why a product lost | `recommend`, then shared reasons in `evidence` | [recommend.test.ts](../../tests/recommend.test.ts) |
-| Extraction, follow-up grounding, or failures | `model`, `workflow` | [workflow.test.ts](../../tests/workflow.test.ts); [live.test.ts](../../tests/live.test.ts) against Ollama |
-| HTTP protocol, history bounds, or cancellation | `contract`, route, `turn-stream` | [route.test.ts](../../tests/route.test.ts); [turn-stream.test.ts](../../tests/turn-stream.test.ts) |
-| Saved state, stale requests, or display timing | `conversations`, `reveal-text`, UI hook | [conversations.test.ts](../../tests/conversations.test.ts); [reveal-text.test.ts](../../tests/reveal-text.test.ts) |
+## Tests
 
-`npm run check` runs type checking, regular tests, and a production build; `npm run test:live` exercises the real model. Tests use synthetic evidence, the supplied dataset, and injected model/HTTP functions so ordinary checks do not depend on Ollama.
+| Area | Tests |
+| --- | --- |
+| Input and supplied data | [data](../../tests/data.test.ts), [dataset](../../tests/dataset.test.ts) |
+| Ranking and allocation | [recommend](../../tests/recommend.test.ts) |
+| Model and workflow | [workflow](../../tests/workflow.test.ts), [live Ollama checks](../../tests/live.test.ts) |
+| HTTP and streaming | [route](../../tests/route.test.ts), [turn-stream](../../tests/turn-stream.test.ts) |
+| Saved state and display timing | [conversations](../../tests/conversations.test.ts), [reveal-text](../../tests/reveal-text.test.ts) |
 
-Example tradeoffs: Finance/US, $20,000, CTR, 800,000 minimum impressions rejects the top CTR product because the budget buys only 625,000 impressions; QSR/US, $15,000, in-view rate, the same minimum leaves $51 unused.
-
-References: [LangGraph workflows](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents), [Ollama structured output](https://docs.ollama.com/capabilities/structured-outputs). See [setup](../setup/README.md), [API](../api/README.md), and [UI](../ui/README.md) for integration details.
+Regular tests use supplied data, fixtures, and injected model/HTTP functions. Only live checks require Ollama. Run the [verification commands](../../README.md#verify) from the repository root.

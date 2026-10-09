@@ -1,12 +1,12 @@
 # Kargo Media Planner
 
-A Next.js media-planning app with chat, an editable brief, and product recommendations. LangGraph coordinates the workflow; Ollama interprets language, and TypeScript owns calculations and ranking.
+A Next.js media planner. Ollama interprets chat; TypeScript calculates and ranks plans; LangGraph connects the steps.
 
 ## Run
 
 Use Node.js 24 and npm. The supplied data is included; no `.env` is needed.
 
-For chat, install [Ollama](https://ollama.com/download) and start its app, or leave `ollama serve` running in a separate terminal. Then, from the repository root:
+Install [Ollama](https://ollama.com/download) and start its app, or leave `ollama serve` running in a separate terminal. It provides the local LLM HTTP API at `http://127.0.0.1:11434`. From the repository root:
 
 ```bash
 ollama pull qwen2.5:14b  # Required for chat
@@ -25,8 +25,8 @@ npm run test:live   # Requires Ollama
 
 ## Documentation
 
-- [Setup](docs/setup/README.md) — data, local model, configuration, and commands.
-- [Library](docs/lib/README.md) — workflow, dependency graphs, and planning rules.
-- [API](docs/api/README.md) — endpoints, validation, and streaming.
-- [UI](docs/ui/README.md) — conversation state, persistence, and presentation.
-- [Benchmarks](docs/benchmarks/README.md) — measurements and reproduction commands.
+- [Request lifecycle](docs/lifecycle/README.md)
+- [Library, planning rules, and diagrams](docs/lib/README.md)
+- [API and streaming](docs/api/README.md)
+- [UI and saved chats](docs/ui/README.md)
+- [Benchmarks](docs/benchmarks/README.md)

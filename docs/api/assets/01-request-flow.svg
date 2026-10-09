@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="api-request-flow-title api-request-flow-desc" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
+<title id="api-request-flow-title">How the API handles a turn</title>
+<desc id="api-request-flow-desc">A chat or brief request is validated before the workflow runs. Invalid input returns a JSON error. The workflow sends either one JSON response or NDJSON progress and a final result. A separate status endpoint checks data and model availability without inference.</desc>
+<rect width="1280" height="720" fill="#ffffff"/>
+<defs>
+<marker id="api-request-flow-muted" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#68768a"/></marker>
+<marker id="api-request-flow-blue" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#4878b8"/></marker>
+<marker id="api-request-flow-orange" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#b45d14"/></marker>
+</defs>
+<text x="48" y="48" font-size="28" fill="#263343" font-weight="500">How the API handles a turn</text>
+<text x="48" y="80" font-size="16" fill="#68768a" font-weight="400">POST /api/chat validates input, runs the workflow, and returns the requested format.</text>
+<path data-source="request" data-target="validate" d="M288 208 H368" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#api-request-flow-blue)"/>
+<path data-source="validate" data-target="workflow" d="M696 208 H880" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#api-request-flow-blue)"/>
+<path data-source="validate" data-target="reject" d="M532 264 V392" fill="none" stroke="#68768a" stroke-width="2" marker-end="url(#api-request-flow-muted)"/>
+<path data-source="workflow" data-target="json" d="M960 264 V312 Q960 320 952 320 H892 Q884 320 884 328 V392" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#api-request-flow-blue)"/>
+<path data-source="workflow" data-target="stream" d="M1168 264 V312 Q1168 320 1160 320 H1140 Q1132 320 1132 328 V392" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#api-request-flow-blue)"/>
+<path data-source="status" data-target="checks" d="M320 596 H400" fill="none" stroke="#68768a" stroke-width="2" marker-end="url(#api-request-flow-muted)"/>
+<path data-source="checks" data-target="readiness" d="M832 596 H944" fill="none" stroke="#68768a" stroke-width="2" marker-end="url(#api-request-flow-muted)"/>
+<rect x="760" y="172" width="64" height="20" fill="#ffffff"/>
+<text x="760" y="188" font-size="12" fill="#68768a" font-weight="500">VALID</text>
+<rect x="544" y="320" width="80" height="20" fill="#ffffff"/>
+<text x="544" y="336" font-size="12" fill="#68768a" font-weight="500">INVALID</text>
+<rect x="896" y="348" width="84" height="20" fill="#ffffff"/>
+<text x="896" y="364" font-size="12" fill="#68768a" font-weight="500">DEFAULT</text>
+<rect x="1144" y="348" width="80" height="20" fill="#ffffff"/>
+<text x="1144" y="364" font-size="12" fill="#68768a" font-weight="500">NDJSON</text>
+<g data-node="request"><rect x="48" y="152" width="240" height="112" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="64" y="184" font-size="24" fill="#263343" font-weight="500">Chat or brief</text>
+<text x="64" y="212" font-size="16" fill="#68768a" font-weight="400">POST /api/chat</text>
+<text x="64" y="236" font-size="16" fill="#68768a" font-weight="400">Message or form values</text>
+</g>
+<g data-node="validate"><rect x="368" y="152" width="328" height="112" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="384" y="184" font-size="24" fill="#263343" font-weight="500">Validate input</text>
+<text x="384" y="212" font-size="16" fill="#68768a" font-weight="400">Origin · JSON · ≤64,000 bytes</text>
+<text x="384" y="236" font-size="16" fill="#68768a" font-weight="400">chat/route.ts + contract.ts</text>
+</g>
+<g data-node="workflow"><rect x="880" y="152" width="352" height="112" rx="6" fill="#fff5e9" stroke="#b45d14" stroke-width="1.2"/>
+<text x="896" y="184" font-size="24" fill="#263343" font-weight="500">Run workflow</text>
+<text x="896" y="212" font-size="16" fill="#68768a" font-weight="400">workflow.ts</text>
+<text x="896" y="236" font-size="16" fill="#68768a" font-weight="400">Code + optional Ollama</text>
+</g>
+<g data-node="reject"><rect x="368" y="392" width="328" height="112" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="384" y="424" font-size="24" fill="#263343" font-weight="500">Reject request</text>
+<text x="384" y="452" font-size="16" fill="#68768a" font-weight="400">400 · 403 · 413 · 415</text>
+<text x="384" y="476" font-size="16" fill="#68768a" font-weight="400">JSON error; workflow not run</text>
+</g>
+<g data-node="json"><rect x="784" y="392" width="200" height="112" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="800" y="424" font-size="20" fill="#263343" font-weight="500">JSON response</text>
+<text x="800" y="452" font-size="16" fill="#68768a" font-weight="400">200 or 503</text>
+<text x="800" y="476" font-size="16" fill="#68768a" font-weight="400">One complete result</text>
+</g>
+<g data-node="stream"><rect x="1032" y="392" width="200" height="112" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="1048" y="424" font-size="20" fill="#263343" font-weight="500">NDJSON stream</text>
+<text x="1048" y="452" font-size="16" fill="#68768a" font-weight="400">Progress → result</text>
+<text x="1048" y="476" font-size="16" fill="#68768a" font-weight="400">Error in final event</text>
+</g>
+<line x1="48" y1="532" x2="1232" y2="532" stroke="#d9e1eb"/>
+<g data-node="status"><rect x="48" y="560" width="272" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="64" y="592" font-size="20" fill="#263343" font-weight="500">GET /api/status</text>
+<text x="64" y="620" font-size="16" fill="#68768a" font-weight="400">Separate setup check</text>
+</g>
+<g data-node="checks"><rect x="400" y="560" width="432" height="72" rx="6" fill="#f4f6f8" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="416" y="592" font-size="20" fill="#263343" font-weight="500">Check data and model</text>
+<text x="416" y="620" font-size="16" fill="#68768a" font-weight="400">CSV loading + Ollama /api/tags; no inference</text>
+</g>
+<g data-node="readiness"><rect x="944" y="560" width="288" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="960" y="592" font-size="20" fill="#263343" font-weight="500">Readiness JSON</text>
+<text x="960" y="620" font-size="16" fill="#68768a" font-weight="400">Data counts/version + modelReady</text>
+</g>
+<line x1="48" y1="660" x2="1232" y2="660" stroke="#d9e1eb"/>
+<text x="48" y="688" font-size="16" fill="#4878b8" font-weight="400">Blue / neutral: application code</text>
+<text x="448" y="688" font-size="16" fill="#b45d14" font-weight="400">Orange: workflow may call Ollama; manual briefs skip the model.</text>
+</svg>

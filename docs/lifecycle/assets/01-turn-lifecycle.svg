@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 1120" width="1280" height="1120" role="img" aria-labelledby="turn-lifecycle-title turn-lifecycle-desc" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
+<title id="turn-lifecycle-title">One user turn, from message to plan</title>
+<desc id="turn-lifecycle-desc">A top-to-bottom sequence across user, browser UI, Next.js API, workflow and data, and Ollama. Progress streams while the workflow runs. Code merges extracted fields and calculates a plan; questions may get a second model call. The complete result returns to the browser, which reveals the text and pauses before showing the plan. Conversation state stays in the browser. Participant labels link to detailed documentation.</desc>
+<rect width="1280" height="1120" fill="#ffffff"/>
+<defs>
+<marker id="turn-lifecycle-muted" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#68768a"/></marker>
+<marker id="turn-lifecycle-blue" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#4878b8"/></marker>
+<marker id="turn-lifecycle-orange" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#b45d14"/></marker>
+</defs>
+<text x="48" y="48" font-size="28" fill="#263343" font-weight="500">One user turn, from message to plan</text>
+<text x="48" y="80" font-size="16" fill="#68768a" font-weight="400">Time runs downward · a complete chat brief or plan question · actor names link to the detailed guides.</text>
+<line x1="120" y1="184" x2="120" y2="1048" stroke="#c9d2df" stroke-dasharray="4 8"/>
+<line x1="376" y1="184" x2="376" y2="1048" stroke="#c9d2df" stroke-dasharray="4 8"/>
+<line x1="632" y1="184" x2="632" y2="1048" stroke="#c9d2df" stroke-dasharray="4 8"/>
+<line x1="888" y1="184" x2="888" y2="1048" stroke="#c9d2df" stroke-dasharray="4 8"/>
+<line x1="1144" y1="184" x2="1144" y2="1048" stroke="#c9d2df" stroke-dasharray="4 8"/>
+<rect x="372" y="228" width="8" height="800" fill="#ffffff" stroke="#4878b8" stroke-width="1"/>
+<rect x="628" y="276" width="8" height="572" fill="#ffffff" stroke="#4878b8" stroke-width="1"/>
+<rect x="884" y="324" width="8" height="472" fill="#ffffff" stroke="#4878b8" stroke-width="1"/>
+<rect x="1140" y="448" width="8" height="40" fill="#ffffff" stroke="#b45d14" stroke-width="1"/>
+<rect x="1140" y="660" width="8" height="56" fill="#ffffff" stroke="#b45d14" stroke-width="1"/>
+<rect x="764" y="608" width="468" height="140" rx="4" fill="#ffffff" stroke="#c9d2df" stroke-width="1.2"/>
+<line x1="888" y1="628" x2="888" y2="748" stroke="#c9d2df" stroke-dasharray="4 8"/>
+<line x1="1144" y1="628" x2="1144" y2="748" stroke="#c9d2df" stroke-dasharray="4 8"/>
+<rect x="764" y="608" width="48" height="24" fill="#f4f6f8" stroke="#c9d2df"/>
+<text x="772" y="624" font-size="12" fill="#68768a" font-weight="500">OPT</text>
+<text x="824" y="624" font-size="12" fill="#68768a" font-weight="400">[question or small talk]</text>
+<rect x="884" y="632" width="8" height="116" fill="#ffffff" stroke="#4878b8" stroke-width="1"/>
+<rect x="1140" y="660" width="8" height="56" fill="#ffffff" stroke="#b45d14" stroke-width="1"/>
+<path data-source="user" data-target="ui" d="M120 228 H372" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#turn-lifecycle-blue)"/>
+<rect data-label="user-ui-228" x="136" y="196" width="108" height="24" fill="#ffffff"/>
+<text x="136" y="212" font-size="16" fill="#4878b8" font-weight="400">Send message</text>
+<path data-source="ui" data-target="api" d="M380 276 H628" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#turn-lifecycle-blue)"/>
+<rect data-label="ui-api-276" x="396" y="244" width="128" height="24" fill="#ffffff"/>
+<text x="396" y="260" font-size="16" fill="#4878b8" font-weight="400">POST /api/chat</text>
+<path data-source="api" data-target="workflow" d="M636 324 H884" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#turn-lifecycle-blue)"/>
+<rect data-label="api-workflow-324" x="652" y="292" width="100" height="24" fill="#ffffff"/>
+<text x="652" y="308" font-size="16" fill="#4878b8" font-weight="400">Check + run</text>
+<path data-source="workflow" data-target="api" d="M884 364 H636" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#turn-lifecycle-muted)"/>
+<rect data-label="workflow-api-364" x="652" y="332" width="108" height="24" fill="#ffffff"/>
+<text x="652" y="348" font-size="16" fill="#68768a" font-weight="400">Stage update</text>
+<path data-source="api" data-target="ui" d="M628 400 H380" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#turn-lifecycle-muted)"/>
+<rect data-label="api-ui-400" x="396" y="368" width="108" height="24" fill="#ffffff"/>
+<text x="396" y="384" font-size="16" fill="#68768a" font-weight="400">Stage update</text>
+<path data-source="workflow" data-target="ollama" d="M892 448 H1140" fill="none" stroke="#b45d14" stroke-width="2" marker-end="url(#turn-lifecycle-orange)"/>
+<rect data-label="workflow-ollama-448" x="908" y="416" width="120" height="24" fill="#ffffff"/>
+<text x="908" y="432" font-size="16" fill="#b45d14" font-weight="400">Extract brief</text>
+<path data-source="ollama" data-target="workflow" d="M1140 488 H892" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#turn-lifecycle-muted)"/>
+<rect data-label="ollama-workflow-488" x="908" y="456" width="128" height="24" fill="#ffffff"/>
+<text x="908" y="472" font-size="16" fill="#68768a" font-weight="400">Intent + patch</text>
+<path data-source="workflow" data-target="ollama" d="M892 660 H1140" fill="none" stroke="#b45d14" stroke-width="2" marker-end="url(#turn-lifecycle-orange)"/>
+<rect data-label="workflow-ollama-660" x="908" y="628" width="108" height="24" fill="#ffffff"/>
+<text x="908" y="644" font-size="16" fill="#b45d14" font-weight="400">Explain plan</text>
+<path data-source="ollama" data-target="workflow" d="M1140 716 H892" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#turn-lifecycle-muted)"/>
+<rect data-label="ollama-workflow-716" x="908" y="684" width="92" height="24" fill="#ffffff"/>
+<text x="908" y="700" font-size="16" fill="#68768a" font-weight="400">Reply text</text>
+<path data-source="workflow" data-target="api" d="M884 796 H636" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#turn-lifecycle-muted)"/>
+<rect data-label="workflow-api-796" x="652" y="764" width="136" height="24" fill="#ffffff"/>
+<text x="652" y="780" font-size="16" fill="#68768a" font-weight="400">Verified result</text>
+<path data-source="api" data-target="ui" d="M628 848 H380" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#turn-lifecycle-muted)"/>
+<rect data-label="api-ui-848" x="396" y="816" width="108" height="24" fill="#ffffff"/>
+<text x="396" y="832" font-size="16" fill="#68768a" font-weight="400">Final result</text>
+<path data-source="ui" data-target="user" d="M372 1028 H120" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#turn-lifecycle-muted)"/>
+<rect data-label="ui-user-1028" x="136" y="996" width="108" height="24" fill="#ffffff"/>
+<text x="136" y="1012" font-size="16" fill="#68768a" font-weight="400">Reply + plan</text>
+<g data-node="user"><rect x="48" y="112" width="144" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="64" y="140" font-size="20" fill="#263343" font-weight="500">User</text>
+<text x="64" y="164" font-size="16" fill="#68768a" font-weight="400">Send / refine</text>
+</g>
+<a href="../../ui/README.md" aria-label="Browser UI documentation">
+<g data-node="ui"><rect x="264" y="112" width="224" height="72" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="280" y="140" font-size="20" fill="#263343" font-weight="500">Browser UI</text>
+<text x="280" y="164" font-size="16" fill="#68768a" font-weight="400">Chat state + display</text>
+</g>
+</a>
+<a href="../../api/README.md" aria-label="Next.js API documentation">
+<g data-node="api"><rect x="520" y="112" width="224" height="72" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="536" y="140" font-size="20" fill="#263343" font-weight="500">Next.js API</text>
+<text x="536" y="164" font-size="16" fill="#68768a" font-weight="400">Validate + stream</text>
+</g>
+</a>
+<a href="../../lib/README.md" aria-label="Workflow + data documentation">
+<g data-node="workflow"><rect x="776" y="112" width="224" height="72" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="792" y="140" font-size="20" fill="#263343" font-weight="500">Workflow + data</text>
+<text x="792" y="164" font-size="16" fill="#68768a" font-weight="400">Rules + cached data</text>
+</g>
+</a>
+<a href="../../lib/README.md#following-a-request" aria-label="Ollama documentation">
+<g data-node="ollama"><rect x="1056" y="112" width="176" height="72" rx="6" fill="#fff5e9" stroke="#b45d14" stroke-width="1.2"/>
+<text x="1072" y="140" font-size="20" fill="#263343" font-weight="500">Ollama</text>
+<text x="1072" y="164" font-size="16" fill="#68768a" font-weight="400">Language</text>
+</g>
+</a>
+<a href="../../lib/README.md#planning-rules" aria-label="Merge + calculate documentation">
+<g data-node="calculate"><rect x="776" y="520" width="224" height="64" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="792" y="548" font-size="20" fill="#263343" font-weight="500">Merge + calculate</text>
+<text x="792" y="572" font-size="16" fill="#68768a" font-weight="400">Use indexed evidence</text>
+</g>
+</a>
+<a href="../../ui/README.md#response-presentation" aria-label="Reveal reply documentation">
+<g data-node="present"><rect x="264" y="888" width="224" height="96" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="280" y="916" font-size="20" fill="#263343" font-weight="500">Reveal reply</text>
+<text x="280" y="940" font-size="16" fill="#68768a" font-weight="400">Wait 1 s; show plan</text>
+<text x="280" y="964" font-size="16" fill="#68768a" font-weight="400">Save state in browser</text>
+</g>
+</a>
+<text x="136" y="552" font-size="16" fill="#263343" font-weight="500">Chats stay in this browser.</text>
+<text x="136" y="576" font-size="16" fill="#68768a" font-weight="400">Each turn is a new request.</text>
+<text x="136" y="600" font-size="16" fill="#68768a" font-weight="400">No server chat session.</text>
+<text x="656" y="904" font-size="16" fill="#263343" font-weight="500">Reply text arrives complete.</text>
+<text x="656" y="928" font-size="16" fill="#68768a" font-weight="400">Then the UI animates it.</text>
+<text x="656" y="952" font-size="16" fill="#68768a" font-weight="400">No model token stream.</text>
+<line x1="48" y1="1064" x2="1232" y2="1064" stroke="#d9e1eb"/>
+<text x="48" y="1092" font-size="16" fill="#4878b8" font-weight="400">Blue: application code</text>
+<text x="352" y="1092" font-size="16" fill="#b45d14" font-weight="400">Orange: model calls</text>
+<text x="688" y="1092" font-size="16" fill="#68768a" font-weight="400">Dashed: returned data · spacing is not elapsed time</text>
+</svg>
