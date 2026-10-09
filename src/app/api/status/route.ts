@@ -1,5 +1,5 @@
-import { loadDataset } from "@/lib/data";
-import { ollamaConfig } from "@/lib/model";
+import { loadDataset } from "@/lib/planning/dataset";
+import { ollamaConfig } from "@/lib/assistant/ollama";
 
 /** Setup state for the UI: is the evidence loaded, and is the model installed? */
 export async function GET() {
@@ -8,9 +8,6 @@ export async function GET() {
     loadDataset().then(
       (d) => ({
         ready: true,
-        products: d.products.size,
-        benchmarks: d.benchmarks.size,
-        historyRows: d.historyRows,
         version: d.version,
       }),
       // A missing dataset is a setup state, not an empty catalog.

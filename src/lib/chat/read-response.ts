@@ -5,7 +5,7 @@ import {
   turnResponseSchema,
   type TurnResponse,
   type TurnStage,
-} from "./contract";
+} from "./protocol";
 
 const MAX_RESPONSE_BYTES = 262_144;
 const UNREADABLE = "The server sent an unreadable response. Please try again.";

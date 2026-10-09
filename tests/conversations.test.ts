@@ -8,9 +8,9 @@ import {
   workspaceReducer,
   type WorkspaceAction,
   type WorkspaceState,
-} from "../src/lib/conversations";
-import { recommend } from "../src/lib/recommend";
-import type { TurnResponse } from "../src/lib/contract";
+} from "../src/lib/chat/conversations";
+import { recommend } from "../src/lib/planning/recommendation";
+import type { TurnResponse } from "../src/lib/chat/protocol";
 import { financeBrief, syntheticData } from "./fixtures";
 
 const brief = { ...financeBrief, clientName: "First campaign" };

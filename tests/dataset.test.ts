@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { loadDataset, loadExampleBriefs } from "../src/lib/data";
-import { recommend } from "../src/lib/recommend";
-import type { CompleteBrief } from "../src/lib/brief";
+import { loadDataset, loadExampleBriefs } from "../src/lib/planning/dataset";
+import { recommend } from "../src/lib/planning/recommendation";
+import type { CompleteBrief } from "../src/lib/planning/brief";
 
 // Regression expectations for the supplied dataset.
 const brief = (

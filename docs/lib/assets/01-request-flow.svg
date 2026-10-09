@@ -1,99 +1,53 @@
-<?xml version="1.0" encoding="utf-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="01-request-flow-title 01-request-flow-desc" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
-  <title id="01-request-flow-title">From a message to a visible plan</title>
-  <desc id="01-request-flow-desc">Execution flow · Chat updates the brief; questions and small talk get an optional answer.</desc>
-  <rect x="0" y="0" width="1280" height="720" rx="6" fill="#ffffff"/>
-  <defs>
-    <marker id="01-request-flow-muted" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
-      <path d="M0 0 L8 4 L0 8 Z" fill="#68768a"/>
-    </marker>
-    <marker id="01-request-flow-blue" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
-      <path d="M0 0 L8 4 L0 8 Z" fill="#4878b8"/>
-    </marker>
-    <marker id="01-request-flow-orange" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
-      <path d="M0 0 L8 4 L0 8 Z" fill="#b45d14"/>
-    </marker>
-  </defs>
-  <text x="48" y="48" font-size="28" fill="#263343" text-anchor="start" font-weight="500">From a message to a visible plan</text>
-  <text x="48" y="80" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Execution flow · Chat updates the brief; questions and small talk get an optional answer.</text>
-  <rect x="632" y="120" width="600" height="340" rx="8" fill="#f7faff" stroke="#4878b8" stroke-width="1.2" stroke-dasharray="8 8"/>
-  <text x="656" y="156" font-size="20" fill="#4878b8" text-anchor="start" font-weight="500">LangGraph · workflow.ts</text>
-  <g data-source="submit" data-target="api" data-kind="flow">
-    <path d="M288 232 L344 232" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
-  </g>
-  <g data-source="api" data-target="extract" data-kind="flow">
-    <path d="M584 232 L656 232" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
-  </g>
-  <g data-source="extract" data-target="merge" data-kind="flow">
-    <path d="M888 232 L944 232" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
-  </g>
-  <g data-source="merge" data-target="respond" data-kind="flow">
-    <path d="M1096 284 L1096 340" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
-  </g>
-  <g data-source="respond" data-target="answer" data-kind="flow">
-    <path d="M944 392 L924 392 Q916 392 916 400 L916 576 Q916 584 908 584 L888 584" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
-  </g>
-  <g data-source="answer" data-target="return" data-kind="flow">
-    <path d="M656 584 L584 584" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
-  </g>
-  <g data-source="return" data-target="present" data-kind="flow">
-    <path d="M344 584 L288 584" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#01-request-flow-blue)"/>
-  </g>
-  <g data-source="respond" data-target="return" data-kind="branch">
-    <path d="M1120 440 L1120 480 Q1120 488 1112 488 L922 488 Q916 500 910 488 L480 488 Q472 488 472 496 L472 532" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#01-request-flow-muted)"/>
-  </g>
-  <rect x="504" y="460" width="112" height="20" rx="0" fill="#ffffff"/>
-  <text x="560.0" y="476" font-size="12" fill="#68768a" text-anchor="middle" font-weight="500">BRIEF TURN</text>
-  <g data-node="submit">
-    <rect x="48" y="184" width="240" height="100" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
-    <text x="64" y="216" font-size="24" fill="#263343" text-anchor="start" font-weight="500">1  Submit</text>
-    <text x="64" y="248" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Brief + latest message</text>
-    <text x="64" y="272" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Bounded prior history</text>
-  </g>
-  <g data-node="api">
-    <rect x="344" y="184" width="240" height="100" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
-    <text x="360" y="216" font-size="24" fill="#263343" text-anchor="start" font-weight="500">2  Validate request</text>
-    <text x="360" y="248" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">/api/chat + contract.ts</text>
-    <text x="360" y="272" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Inject model and data</text>
-  </g>
-  <g data-node="extract">
-    <rect x="656" y="184" width="232" height="100" rx="6" fill="#fff5e9" stroke="#b45d14" stroke-width="1.2"/>
-    <text x="672" y="216" font-size="24" fill="#263343" text-anchor="start" font-weight="500">3  Extract</text>
-    <text x="672" y="248" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Ollama returns JSON</text>
-    <text x="672" y="272" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Code checks quotes</text>
-  </g>
-  <g data-node="merge">
-    <rect x="944" y="184" width="248" height="100" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
-    <text x="960" y="216" font-size="24" fill="#263343" text-anchor="start" font-weight="500">4  Merge</text>
-    <text x="960" y="248" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Apply quoted changes</text>
-    <text x="960" y="272" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Resolve pending fields</text>
-  </g>
-  <g data-node="respond">
-    <rect x="944" y="340" width="248" height="100" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
-    <text x="960" y="372" font-size="24" fill="#263343" text-anchor="start" font-weight="500">5  Respond</text>
-    <text x="960" y="404" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Clarify or calculate</text>
-    <text x="960" y="428" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Validated plan + summary</text>
-  </g>
-  <g data-node="answer">
-    <rect x="656" y="532" width="232" height="100" rx="6" fill="#fff5e9" stroke="#b45d14" stroke-width="1.2"/>
-    <text x="672" y="564" font-size="24" fill="#263343" text-anchor="start" font-weight="500">6  Answer if asked</text>
-    <text x="672" y="596" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Ollama uses evidence</text>
-    <text x="672" y="620" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Failure keeps summary</text>
-  </g>
-  <g data-node="return">
-    <rect x="344" y="532" width="240" height="100" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
-    <text x="360" y="564" font-size="24" fill="#263343" text-anchor="start" font-weight="500">7  Return result</text>
-    <text x="360" y="596" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Final TurnResponse</text>
-    <text x="360" y="620" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Plan stays code-owned</text>
-  </g>
-  <g data-node="present">
-    <rect x="48" y="532" width="240" height="100" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
-    <text x="64" y="564" font-size="24" fill="#263343" text-anchor="start" font-weight="500">8  Reveal and save</text>
-    <text x="64" y="596" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">Reveal → pause → resolve</text>
-    <text x="64" y="620" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">1 s for a plan/report</text>
-  </g>
-  <line x1="48" y1="660" x2="1232" y2="660" stroke="#d9e1eb"/>
-  <text x="48" y="684" font-size="16" fill="#4878b8" text-anchor="start" font-weight="400">Blue / neutral: application code</text>
-  <text x="400" y="684" font-size="16" fill="#b45d14" text-anchor="start" font-weight="400">Orange: calls Ollama</text>
-  <text x="704" y="684" font-size="16" fill="#68768a" text-anchor="start" font-weight="400">NDJSON: progress + one final result; no model token stream.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="lib-workflow-title lib-workflow-desc" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
+<title id="lib-workflow-title">How the library builds a response</title>
+<desc id="lib-workflow-desc">LangGraph extracts campaign changes, merges the brief, then clarifies missing details or calculates a plan. Questions and small talk get an optional Ollama answer afterward; the calculated result stays unchanged.</desc>
+<rect width="1280" height="720" fill="#ffffff"/>
+<defs>
+<marker id="lib-workflow-muted" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#68768a"/></marker>
+<marker id="lib-workflow-blue" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#4878b8"/></marker>
+<marker id="lib-workflow-orange" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#b45d14"/></marker>
+</defs>
+<text x="48" y="48" font-size="28" fill="#263343" font-weight="500">How the library builds a response</text>
+<text x="48" y="80" font-size="16" fill="#68768a">assistant/workflow.ts coordinates the turn; code owns the plan.</text>
+<rect x="40" y="120" width="1200" height="224" rx="8" fill="#f7faff" stroke="#4878b8" stroke-width="1.2" stroke-dasharray="8 8"/>
+<text x="64" y="156" font-size="20" fill="#4878b8" font-weight="500">LangGraph · extract → merge → respond</text>
+<path data-source="extract" data-target="merge" d="M368 252 H472" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#lib-workflow-blue)"/>
+<path data-source="merge" data-target="respond" d="M776 252 H880" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#lib-workflow-blue)"/>
+<path data-source="respond" data-target="return" d="M960 312 V384 Q960 392 952 392 H632 Q624 392 624 400 V480" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#lib-workflow-blue)"/>
+<path data-source="respond" data-target="answer" d="M1136 312 V480" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#lib-workflow-blue)"/>
+<path data-source="answer" data-target="return" d="M880 536 H776" fill="none" stroke="#4878b8" stroke-width="2" marker-end="url(#lib-workflow-blue)"/>
+<rect x="744" y="364" width="128" height="20" fill="#ffffff"/>
+<text x="744" y="380" font-size="12" fill="#68768a" font-weight="500">BRIEF UPDATE</text>
+<rect x="992" y="412" width="136" height="40" fill="#ffffff"/>
+<text x="992" y="428" font-size="12" fill="#68768a" font-weight="500">QUESTION OR</text>
+<text x="992" y="448" font-size="12" fill="#68768a" font-weight="500">SMALL TALK</text>
+<g data-node="extract"><rect x="64" y="192" width="304" height="120" rx="6" fill="#fff5e9" stroke="#b45d14" stroke-width="1.2"/>
+<text x="80" y="224" font-size="24" fill="#263343" font-weight="500">Extract details</text>
+<text x="80" y="256" font-size="16" fill="#68768a">assistant/ollama.ts</text>
+<text x="80" y="280" font-size="16" fill="#68768a">Read intent and quoted changes</text>
+</g>
+<g data-node="merge"><rect x="472" y="192" width="304" height="120" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="488" y="224" font-size="24" fill="#263343" font-weight="500">Merge brief</text>
+<text x="488" y="256" font-size="16" fill="#68768a">planning/brief.ts</text>
+<text x="488" y="280" font-size="16" fill="#68768a">Apply updates; track missing fields</text>
+</g>
+<g data-node="respond"><rect x="880" y="192" width="336" height="120" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
+<text x="896" y="224" font-size="24" fill="#263343" font-weight="500">Clarify or calculate</text>
+<text x="896" y="256" font-size="16" fill="#68768a">recommendation.ts · explanations.ts</text>
+<text x="896" y="280" font-size="16" fill="#68768a">Rank plans and write the summary</text>
+</g>
+<g data-node="answer"><rect x="880" y="480" width="336" height="112" rx="6" fill="#fff5e9" stroke="#b45d14" stroke-width="1.2"/>
+<text x="896" y="512" font-size="24" fill="#263343" font-weight="500">Answer the question</text>
+<text x="896" y="544" font-size="16" fill="#68768a">assistant/ollama.ts</text>
+<text x="896" y="568" font-size="16" fill="#68768a">Use calculated evidence + history</text>
+</g>
+<g data-node="return"><rect x="472" y="480" width="304" height="112" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+<text x="488" y="512" font-size="24" fill="#263343" font-weight="500">Return result</text>
+<text x="488" y="544" font-size="16" fill="#68768a">Brief + reply + calculated plan</text>
+<text x="488" y="568" font-size="16" fill="#68768a">No plan until the brief is complete</text>
+</g>
+<text x="48" y="636" font-size="16" fill="#68768a">If answer generation fails, return the calculated summary.</text>
+<line x1="48" y1="660" x2="1232" y2="660" stroke="#d9e1eb"/>
+<text x="48" y="688" font-size="16" fill="#4878b8">Blue / neutral: application code</text>
+<text x="448" y="688" font-size="16" fill="#b45d14">Orange: calls Ollama</text>
 </svg>

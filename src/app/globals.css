@@ -534,12 +534,8 @@ summary {
   align-items: center;
   justify-content: center;
   border-radius: 7px;
-}
-.send-button {
   background: var(--orange);
   color: var(--indigo);
-}
-.send-button {
   min-width: 68px;
   height: 44px;
   padding: 0 14px;
@@ -688,10 +684,6 @@ summary {
 .send-button:hover:not(:disabled) {
   background: #ff8533;
 }
-.goal-note svg {
-  width: 16px;
-  height: 16px;
-}
 .recommended-plan > .eyebrow {
   font-size: 16px;
   text-transform: none;
@@ -754,11 +746,6 @@ summary {
   line-height: 1.5;
   margin-top: 8px;
 }
-.plan-metrics .text-button {
-  text-align: left;
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
 .goal-note {
   display: flex;
   align-items: center;
@@ -767,6 +754,8 @@ summary {
   font-weight: 500;
 }
 .goal-note svg {
+  width: 16px;
+  height: 16px;
   padding: 2px;
   border-radius: 50%;
   background: #73e5b0;
@@ -929,9 +918,6 @@ summary {
 .infeasible h3 {
   font-size: 20px;
   margin-bottom: 12px;
-}
-.infeasible button {
-  margin-top: 18px;
 }
 .muted {
   color: var(--muted);

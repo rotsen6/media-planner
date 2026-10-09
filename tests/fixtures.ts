@@ -1,5 +1,5 @@
-import { GEOS, VERTICALS } from "../src/lib/brief";
-import { parseDataset, type Dataset } from "../src/lib/data";
+import { GEOS, VERTICALS } from "../src/lib/planning/brief";
+import { parseDataset, type Dataset } from "../src/lib/planning/dataset";
 
 export const financeBrief = {
   vertical: "Finance",

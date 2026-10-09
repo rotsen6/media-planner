@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { briefFieldSchema, briefSchema } from "./brief";
-import { recommendationSchema } from "./recommend";
+import { briefFieldSchema, briefSchema } from "../planning/brief";
+import { recommendationSchema } from "../planning/recommendation";
 
 export const pendingFieldsSchema = z
   .array(briefFieldSchema)

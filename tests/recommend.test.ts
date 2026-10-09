@@ -3,13 +3,13 @@ import {
   comparePlans,
   recommend,
   validateRecommendation,
-} from "../src/lib/recommend";
+} from "../src/lib/planning/recommendation";
 import {
   alternativeReason,
   comparisonCandidate,
   explainRecommendation,
   productReason,
-} from "../src/lib/evidence";
+} from "../src/lib/planning/explanations";
 import { financeBrief as brief, syntheticData } from "./fixtures";
 
 describe("decision policy", () => {

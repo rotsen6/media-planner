@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "../src/app/api/chat/route";
-import { ModelError } from "../src/lib/model";
-import { CHAT_HISTORY_LIMIT, CHAT_HISTORY_TEXT_LIMIT } from "../src/lib/contract";
+import { ModelError } from "../src/lib/assistant/ollama";
+import { CHAT_HISTORY_LIMIT, CHAT_HISTORY_TEXT_LIMIT } from "../src/lib/chat/protocol";
 import { chatRequest as request } from "./fixtures";
 
 const { extract, answer } = vi.hoisted(() => ({ extract: vi.fn(), answer: vi.fn() }));
-vi.mock("../src/lib/model", async (original) => ({
-  ...(await original<typeof import("../src/lib/model")>()),
+vi.mock("../src/lib/assistant/ollama", async (original) => ({
+  ...(await original<typeof import("../src/lib/assistant/ollama")>()),
   createOllamaModel: () => ({ extract, answer }),
 }));
 const streamRequest = (input: unknown) => {

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="api-request-flow-title api-request-flow-desc" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
 <title id="api-request-flow-title">How the API handles a turn</title>
-<desc id="api-request-flow-desc">A chat request is validated before the workflow runs. Invalid input returns a JSON error. The workflow sends either one JSON response or NDJSON progress and a final result. A separate status endpoint checks data and model availability without inference.</desc>
+<desc id="api-request-flow-desc">The API validates chat input, runs the workflow, and returns JSON or NDJSON; a separate status endpoint checks data and model availability.</desc>
 <rect width="1280" height="720" fill="#ffffff"/>
 <defs>
 <marker id="api-request-flow-muted" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#68768a"/></marker>
@@ -25,18 +25,18 @@
 <rect x="1144" y="348" width="80" height="20" fill="#ffffff"/>
 <text x="1144" y="364" font-size="12" fill="#68768a" font-weight="500">NDJSON</text>
 <g data-node="request"><rect x="48" y="152" width="240" height="112" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
-<text x="64" y="184" font-size="24" fill="#263343" font-weight="500">Chat or brief</text>
+<text x="64" y="184" font-size="24" fill="#263343" font-weight="500">Chat message</text>
 <text x="64" y="212" font-size="16" fill="#68768a" font-weight="400">POST /api/chat</text>
 <text x="64" y="236" font-size="16" fill="#68768a" font-weight="400">Message + current brief</text>
 </g>
 <g data-node="validate"><rect x="368" y="152" width="328" height="112" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
 <text x="384" y="184" font-size="24" fill="#263343" font-weight="500">Validate input</text>
 <text x="384" y="212" font-size="16" fill="#68768a" font-weight="400">Origin · JSON · ≤64,000 bytes</text>
-<text x="384" y="236" font-size="16" fill="#68768a" font-weight="400">chat/route.ts + contract.ts</text>
+<text x="384" y="236" font-size="16" fill="#68768a" font-weight="400">chat/route.ts + protocol.ts</text>
 </g>
 <g data-node="workflow"><rect x="880" y="152" width="352" height="112" rx="6" fill="#fff5e9" stroke="#b45d14" stroke-width="1.2"/>
 <text x="896" y="184" font-size="24" fill="#263343" font-weight="500">Run workflow</text>
-<text x="896" y="212" font-size="16" fill="#68768a" font-weight="400">workflow.ts</text>
+<text x="896" y="212" font-size="16" fill="#68768a" font-weight="400">assistant/workflow.ts</text>
 <text x="896" y="236" font-size="16" fill="#68768a" font-weight="400">Code + Ollama</text>
 </g>
 <g data-node="reject"><rect x="368" y="392" width="328" height="112" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
@@ -52,7 +52,7 @@
 <g data-node="stream"><rect x="1032" y="392" width="200" height="112" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
 <text x="1048" y="424" font-size="20" fill="#263343" font-weight="500">NDJSON stream</text>
 <text x="1048" y="452" font-size="16" fill="#68768a" font-weight="400">Progress → result</text>
-<text x="1048" y="476" font-size="16" fill="#68768a" font-weight="400">Error in final event</text>
+<text x="1048" y="476" font-size="16" fill="#68768a" font-weight="400">Handled errors</text>
 </g>
 <line x1="48" y1="532" x2="1232" y2="532" stroke="#d9e1eb"/>
 <g data-node="status"><rect x="48" y="560" width="272" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
@@ -65,7 +65,7 @@
 </g>
 <g data-node="readiness"><rect x="944" y="560" width="288" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
 <text x="960" y="592" font-size="20" fill="#263343" font-weight="500">Readiness JSON</text>
-<text x="960" y="620" font-size="16" fill="#68768a" font-weight="400">Data counts/version + modelReady</text>
+<text x="960" y="620" font-size="16" fill="#68768a" font-weight="400">Data version + modelReady</text>
 </g>
 <line x1="48" y1="660" x2="1232" y2="660" stroke="#d9e1eb"/>
 <text x="48" y="688" font-size="16" fill="#4878b8" font-weight="400">Blue / neutral: application code</text>

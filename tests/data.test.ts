@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseDataset, type DataSources } from "../src/lib/data";
-import { GEOS, VERTICALS, mergeBrief, missingFields } from "../src/lib/brief";
+import { parseDataset, type DataSources } from "../src/lib/planning/dataset";
+import { GEOS, VERTICALS, mergeBrief, missingFields } from "../src/lib/planning/brief";
 
 // Synthetic fixtures; no rows from the real dataset are embedded in tests.
 const sources: DataSources = {

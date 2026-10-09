@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkflow } from "../src/lib/workflow";
+import { createWorkflow } from "../src/lib/assistant/workflow";
 import {
   createOllamaModel,
   ModelError,
   validateExtraction,
   type LanguageModel,
-} from "../src/lib/model";
+} from "../src/lib/assistant/ollama";
 import { blankBrief as blank, financeBrief as complete, syntheticData } from "./fixtures";
 
 const game =

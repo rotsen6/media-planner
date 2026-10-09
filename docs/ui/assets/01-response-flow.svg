@@ -30,17 +30,17 @@
 </g>
 <g data-node="read"><rect x="880" y="152" width="352" height="112" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
 <text x="896" y="184" font-size="24" fill="#263343" font-weight="500">Read API response</text>
-<text x="896" y="212" font-size="16" fill="#68768a" font-weight="400">turn-stream.ts</text>
+<text x="896" y="212" font-size="16" fill="#68768a" font-weight="400">chat/read-response.ts</text>
 <text x="896" y="236" font-size="16" fill="#68768a" font-weight="400">Progress + validated final result</text>
 </g>
 <g data-node="reveal"><rect x="880" y="392" width="352" height="120" rx="6" fill="#eaf2ff" stroke="#4878b8" stroke-width="1.2"/>
 <text x="896" y="424" font-size="24" fill="#263343" font-weight="500">Reveal, then pause</text>
-<text x="896" y="452" font-size="16" fill="#68768a" font-weight="400">reveal-text.ts</text>
+<text x="896" y="452" font-size="16" fill="#68768a" font-weight="400">chat/reveal-text.ts</text>
 <text x="896" y="476" font-size="16" fill="#68768a" font-weight="400">Character by character → 1 s</text>
 </g>
 <g data-node="state"><rect x="400" y="392" width="344" height="120" rx="6" fill="#f4f6f8" stroke="#94a3b8" stroke-width="1.2"/>
 <text x="416" y="424" font-size="24" fill="#263343" font-weight="500">Update chat state</text>
-<text x="416" y="452" font-size="16" fill="#68768a" font-weight="400">conversations.ts</text>
+<text x="416" y="452" font-size="16" fill="#68768a" font-weight="400">chat/conversations.ts</text>
 <text x="416" y="476" font-size="16" fill="#68768a" font-weight="400">Apply matching request IDs</text>
 </g>
 <g data-node="display"><rect x="48" y="392" width="240" height="120" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>

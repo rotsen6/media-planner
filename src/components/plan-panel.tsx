@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { Brief, BriefField as Field, Kpi } from "@/lib/brief";
-import type { Conversation } from "@/lib/conversations";
+import type { Brief, BriefField as Field, Kpi } from "@/lib/planning/brief";
+import type { Conversation } from "@/lib/chat/conversations";
 import {
   alternativeReason,
   comparisonCandidate,
@@ -12,13 +12,13 @@ import {
   number,
   percent,
   productReason,
-} from "@/lib/evidence";
+} from "@/lib/planning/explanations";
 import {
   RANKING_POLICY,
   type EvaluatedProduct,
   type Plan,
   type Recommendation,
-} from "@/lib/recommend";
+} from "@/lib/planning/recommendation";
 import { Icon } from "./icons";
 
 const LABELS: Record<Field, string> = {

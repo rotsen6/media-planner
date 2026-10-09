@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { POST } from "../src/app/api/chat/route";
-import type { TurnResponse } from "../src/lib/contract";
-import { loadExampleBriefs } from "../src/lib/data";
-import { number, percent } from "../src/lib/evidence";
+import type { TurnResponse } from "../src/lib/chat/protocol";
+import { loadExampleBriefs } from "../src/lib/planning/dataset";
+import { number, percent } from "../src/lib/planning/explanations";
 import { blankBrief as blank, chatRequest } from "./fixtures";
 
 // Opt-in (npm run test:live): the real local model, real data, and the real chat route.

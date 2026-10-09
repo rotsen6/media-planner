@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { TurnResponse } from "../src/lib/contract";
-import { readTurnResponse } from "../src/lib/turn-stream";
+import type { TurnResponse } from "../src/lib/chat/protocol";
+import { readTurnResponse } from "../src/lib/chat/read-response";
 
 const result: TurnResponse = {
   status: "clarification", brief: {}, missing: ["budget"], pending: [],

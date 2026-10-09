@@ -5,7 +5,7 @@ import {
   type CompleteBrief,
   type Kpi,
 } from "./brief";
-import type { Dataset } from "./data";
+import type { Dataset } from "./dataset";
 
 const POLICY_VERSION = "ceiling-confidence-tie-single-first-v1";
 export const RANKING_POLICY = {

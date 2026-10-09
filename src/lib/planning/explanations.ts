@@ -13,8 +13,8 @@ import {
   type EvaluatedProduct,
   type Plan,
   type Recommendation,
-} from "./recommend";
-import type { TurnResponse } from "./contract";
+} from "./recommendation";
+import type { TurnResponse } from "../chat/protocol";
 
 const format = (options: Intl.NumberFormatOptions) =>
   new Intl.NumberFormat("en-US", options).format;

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 1120" width="1280" height="1120" role="img" aria-labelledby="turn-lifecycle-title turn-lifecycle-desc" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">
 <title id="turn-lifecycle-title">One user turn, from message to plan</title>
-<desc id="turn-lifecycle-desc">A top-to-bottom sequence across user, browser UI, Next.js API, workflow and data, and Ollama. Progress streams while the workflow runs. Code merges extracted fields and calculates a plan; questions may get a second model call. The complete result returns to the browser, which reveals the text and pauses before showing the plan. Conversation state stays in the browser. Participant labels link to detailed documentation.</desc>
+<desc id="turn-lifecycle-desc">A user message passes through browser state, API validation, LangGraph, and Ollama before the browser reveals the reply and plan.</desc>
 <rect width="1280" height="1120" fill="#ffffff"/>
 <defs>
 <marker id="turn-lifecycle-muted" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#68768a"/></marker>
@@ -56,7 +56,7 @@
 <text x="908" y="700" font-size="16" fill="#68768a" font-weight="400">Reply text</text>
 <path data-source="workflow" data-target="api" d="M884 796 H636" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#turn-lifecycle-muted)"/>
 <rect data-label="workflow-api-796" x="652" y="764" width="136" height="24" fill="#ffffff"/>
-<text x="652" y="780" font-size="16" fill="#68768a" font-weight="400">Verified result</text>
+<text x="652" y="780" font-size="16" fill="#68768a" font-weight="400">Turn result</text>
 <path data-source="api" data-target="ui" d="M628 848 H380" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#turn-lifecycle-muted)"/>
 <rect data-label="api-ui-848" x="396" y="816" width="108" height="24" fill="#ffffff"/>
 <text x="396" y="832" font-size="16" fill="#68768a" font-weight="400">Final result</text>

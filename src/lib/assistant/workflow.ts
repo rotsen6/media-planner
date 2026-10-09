@@ -12,27 +12,27 @@ import {
   missingFields,
   type Brief,
   type BriefField,
-} from "./brief";
-import type { Dataset } from "./data";
+} from "../planning/brief";
+import type { Dataset } from "../planning/dataset";
 import {
   answerEvidence,
   explainClarification,
   explainRecommendation,
-} from "./evidence";
+} from "../planning/explanations";
 import {
   extractionSchema,
   ModelError,
   modelErrors,
   type LanguageModel,
-} from "./model";
-import { recommend, type Recommendation } from "./recommend";
+} from "./ollama";
+import { recommend, type Recommendation } from "../planning/recommendation";
 import {
   pendingFieldsSchema,
   turnRequestSchema,
   turnResponseSchema,
   type TurnResponse,
   type TurnStage,
-} from "./contract";
+} from "../chat/protocol";
 
 const State = new StateSchema({
   request: turnRequestSchema,

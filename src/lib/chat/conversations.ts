@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { briefFieldSchema, briefSchema, type Brief } from "./brief";
+import { briefFieldSchema, briefSchema, type Brief } from "../planning/brief";
 import {
   pendingFieldsSchema,
   turnResponseSchema,
   turnStageSchema,
   type TurnResponse,
   type TurnStage,
-} from "./contract";
+} from "./protocol";
 
 export const HISTORY_KEY = "kargo.media-planner.v1";
 const FIELDS = briefFieldSchema.options;

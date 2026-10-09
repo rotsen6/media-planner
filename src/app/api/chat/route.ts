@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { readText, turnRequestSchema, type TurnEvent } from "@/lib/contract";
-import { loadDataset } from "@/lib/data";
-import { createOllamaModel } from "@/lib/model";
-import { createWorkflow } from "@/lib/workflow";
+import { readText, turnRequestSchema, type TurnEvent } from "@/lib/chat/protocol";
+import { loadDataset } from "@/lib/planning/dataset";
+import { createOllamaModel } from "@/lib/assistant/ollama";
+import { createWorkflow } from "@/lib/assistant/workflow";
 
 export const maxDuration = 90;
 const workflow = createWorkflow({

@@ -5,9 +5,9 @@ import {
   GEOS,
   VERTICALS,
   type Brief,
-} from "./brief";
-import { readText, type ChatMessage, type TurnResponse } from "./contract";
-import { RANKING_POLICY } from "./recommend";
+} from "../planning/brief";
+import { readText, type ChatMessage, type TurnResponse } from "../chat/protocol";
+import { RANKING_POLICY } from "../planning/recommendation";
 
 export const ollamaConfig = {
   baseUrl: "http://127.0.0.1:11434",

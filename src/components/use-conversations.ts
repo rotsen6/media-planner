@@ -18,10 +18,10 @@ import {
   workspaceReducer,
   type WorkspaceAction,
   type WorkspaceState,
-} from "@/lib/conversations";
-import { revealText } from "@/lib/reveal-text";
-import { readTurnResponse } from "@/lib/turn-stream";
-import { CHAT_HISTORY_LIMIT, CHAT_HISTORY_TEXT_LIMIT } from "@/lib/contract";
+} from "@/lib/chat/conversations";
+import { revealText } from "@/lib/chat/reveal-text";
+import { readTurnResponse } from "@/lib/chat/read-response";
+import { CHAT_HISTORY_LIMIT, CHAT_HISTORY_TEXT_LIMIT } from "@/lib/chat/protocol";
 
 const create = () => newConversation(crypto.randomUUID(), Date.now());
 export type ReplyDisplay = { requestId: string; show: (text: string) => void };

@@ -1,5 +1,5 @@
 import Workspace from "@/components/workspace";
-import { loadExampleBriefs } from "@/lib/data";
+import { loadExampleBriefs } from "@/lib/planning/dataset";
 
 export const dynamic = "force-dynamic";
 

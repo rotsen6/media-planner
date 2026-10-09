@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { TURN_STAGE_LABELS } from "@/lib/contract";
+import { TURN_STAGE_LABELS } from "@/lib/chat/protocol";
 import {
   chatSubtitle,
   chatTitle,
   historyChats,
   type Conversation,
-} from "@/lib/conversations";
+} from "@/lib/chat/conversations";
 import { Icon } from "./icons";
 import { PlanPanel } from "./plan-panel";
 import { useConversations, type ReplyDisplay } from "./use-conversations";

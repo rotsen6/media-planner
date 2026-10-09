@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { revealText } from "../src/lib/reveal-text";
+import { revealText } from "../src/lib/chat/reveal-text";
 
 afterEach(() => vi.useRealTimers());
 
