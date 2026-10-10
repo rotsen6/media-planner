@@ -8,7 +8,9 @@ import {
   comparisonCandidate,
   currency,
   explainRecommendation,
+  impressions,
   kpiLabel,
+  legImpressions,
   number,
   percent,
   productReason,
@@ -40,7 +42,7 @@ const display = (field: Field, value: Brief[Field], pending: boolean) => {
     : field === "budget"
       ? `${currency(Number(value))} budget`
       : field === "impressionGoal"
-        ? `At least ${number(Number(value))} impressions`
+        ? `At least ${impressions(Number(value))} impressions`
         : String(value);
 };
 const metricLabel = (kpi: Kpi) => (kpi === "ctr" ? "CTR" : kpiLabel(kpi));
@@ -61,7 +63,7 @@ function PlanMetrics({
       <div>
         <dt>Estimated impressions</dt>
         <dd>
-          {number(plan.impressions)}
+          {impressions(plan.impressions)}
           {brief.impressionGoal && (
             <span className="metric-note goal-note">
               <Icon name="check" /> Impression goal met
@@ -136,7 +138,7 @@ function PlanComparison({ result }: { result: Recommendation }) {
         </div>
         <div>
           <dt>{isProduct ? "Possible" : "Estimated"} impressions</dt>
-          <dd>{number(isProduct ? candidate.deliverableImpressions : candidate.impressions)}</dd>
+          <dd>{impressions(isProduct ? candidate.deliverableImpressions : candidate.impressions)}</dd>
         </div>
         {isProduct && (
           <div>
@@ -191,6 +193,7 @@ function ComparisonTable({ kpi, products = false, children }: {
 
 function Evidence({ result }: { result: Recommendation }) {
   const { kpi } = result.brief;
+  const legShares = result.recommended ? legImpressions(result.recommended) : [];
   const plans = result.recommended
     ? [result.recommended, ...result.alternatives]
     : [];
@@ -211,7 +214,7 @@ function Evidence({ result }: { result: Recommendation }) {
                   <Confidence plan={plan} />
                 </th>
                 <td>{percent(plan[kpi])}</td>
-                <td>{number(plan.impressions)}</td>
+                <td>{impressions(plan.impressions)}</td>
                 <td>
                   {currency(plan.spend)}
                   <span className="table-note">{currency(plan.unspentBudget)} unused</span>
@@ -223,11 +226,11 @@ function Evidence({ result }: { result: Recommendation }) {
         {result.recommended && (
           <section>
             <h3>Allocation & source evidence</h3>
-            {result.recommended.legs.map((leg) => (
+            {result.recommended.legs.map((leg, index) => (
               <div className="evidence-item" key={leg.productId}>
                 <h4>{leg.name}</h4>
                 <p>
-                  {currency(leg.spend)} · {number(leg.impressions)} impressions
+                  {currency(leg.spend)} · {number(legShares[index])} impressions
                   · {currency(leg.cpm)} CPM
                 </p>
                 <p className="muted small">
@@ -263,7 +266,7 @@ function Evidence({ result }: { result: Recommendation }) {
                   {percent(product.confidence)} inventory confidence
                 </span>
               </td>
-              <td>{number(product.deliverableImpressions)}</td>
+              <td>{impressions(product.deliverableImpressions)}</td>
               <td>
                 {currency(product.spend)}
                 <span className="table-note">{currency(product.cpm)} CPM</span>

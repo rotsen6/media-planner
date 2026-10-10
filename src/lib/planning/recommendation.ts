@@ -73,7 +73,7 @@ type Facts = ReturnType<typeof facts>;
 type RankValues = [kpi: number, tieBreak: number, id: string];
 
 // Only absorb floating-point noise, never round impressions before checking a goal.
-const tolerance = (a: number, b: number) =>
+export const tolerance = (a: number, b: number) =>
   Number.EPSILON * 32 * Math.max(1, Math.abs(a), Math.abs(b));
 export const nearlyEqual = (a: number, b: number) =>
   Math.abs(a - b) <= tolerance(a, b);

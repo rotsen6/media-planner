@@ -10,6 +10,7 @@ import {
 import {
   comparePlans,
   nearlyEqual,
+  tolerance,
   type EvaluatedProduct,
   type Plan,
   type Recommendation,
@@ -19,6 +20,15 @@ import type { TurnResponse } from "../chat/protocol";
 const format = (options: Intl.NumberFormatOptions) =>
   new Intl.NumberFormat("en-US", options).format;
 export const number = format({ maximumFractionDigits: 1 });
+/** Whole impressions, rounded down so a plan never overstates delivery; float noise is not a shortfall. */
+export const wholeImpressions = (value: number) =>
+  Math.floor(value + tolerance(value, value));
+export const impressions = (value: number) => number(wholeImpressions(value));
+/** Whole impressions per leg that add up to the plan's whole total; the last leg takes the rounding. */
+export function legImpressions(plan: Plan): number[] {
+  const leading = plan.legs.slice(0, -1).map((leg) => wholeImpressions(leg.impressions));
+  return [...leading, wholeImpressions(plan.impressions) - leading.reduce((sum, n) => sum + n, 0)];
+}
 export const percent = format({ style: "percent", maximumFractionDigits: 2 });
 const [dollars, cents] = [0, 2].map((maximumFractionDigits) =>
   format({ style: "currency", currency: "USD", maximumFractionDigits }),
@@ -36,18 +46,18 @@ export const list = (items: readonly string[], conjunction = "and") =>
     : `${items.slice(0, -1).join(", ")}, ${conjunction} ${items.at(-1)}`;
 
 export function productReason(p: EvaluatedProduct, goal?: number | null): string {
-  const gap = goal == null ? "" : number(goal - p.deliverableImpressions);
+  // Shown delivery plus the shortfall adds up to the goal.
   const shortfall = goal == null ? "below your impression goal"
-    : `${gap === "0" ? "less than 0.1" : gap} below your ${number(goal)} minimum`;
+    : `${number(goal - wholeImpressions(p.deliverableImpressions))} below your ${number(goal)} minimum`;
   switch (p.reason) {
     case "no_inventory":
       return "No forecast inventory in this vertical and geography.";
     case "budget_goal":
-      return `Your budget buys ${number(p.budgetImpressions)} impressions, ${shortfall}.`;
+      return `Your budget buys ${impressions(p.budgetImpressions)} impressions, ${shortfall}.`;
     case "inventory_goal":
       return `Inventory supports ${number(p.availableImpressions)} impressions, ${shortfall}.`;
     case "budget_and_inventory_goal":
-      return `Your budget buys ${number(p.budgetImpressions)} impressions and inventory supports ${number(p.availableImpressions)}. Delivery is limited to ${number(p.deliverableImpressions)}, ${shortfall}.`;
+      return `Your budget buys ${impressions(p.budgetImpressions)} impressions and inventory supports ${number(p.availableImpressions)}. Delivery is limited to ${impressions(p.deliverableImpressions)}, ${shortfall}.`;
     case "eligible":
       return "Meets the constraints; ranked by historical KPI, forecast confidence, then fixed product ordering.";
   }
@@ -104,7 +114,7 @@ const shown = (field: BriefField, value: string | number) =>
     kpi: `${kpiLabel(String(value))} as the KPI`,
     geo: `${value} geography`,
     budget: `${currency(Number(value))} budget`,
-    impressionGoal: `${number(Number(value))} minimum impressions`,
+    impressionGoal: `${impressions(Number(value))} minimum impressions`,
   })[field];
 
 /** One paragraph: what this message set, what it could not use, and what is still needed. */

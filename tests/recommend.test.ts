@@ -55,6 +55,20 @@ describe("decision policy", () => {
     expect(explainRecommendation(precise)[0])
       .toMatch(/higher historical.*2%.*below displayed precision/);
   });
+  it("shows whole impressions, rounding what is bought down and the shortfall up to the goal", () => {
+    const data = syntheticData();
+    data.products.get("B")!.cpm = 30; // $1,000 buys 33,333.3 impressions
+    const goal = { ...brief, impressionGoal: 80000 };
+    const budgetShort = recommend(goal, data).evaluatedProducts.find((p) => p.productId === "B")!;
+    expect(productReason(budgetShort, 80000)).toBe(
+      "Your budget buys 33,333 impressions, 46,667 below your 80,000 minimum.",
+    );
+    data.inventory.get("B:Finance:US")!.available_imps = 40000;
+    const bothShort = recommend(goal, data).evaluatedProducts.find((p) => p.productId === "B")!;
+    expect(productReason(bothShort, 80000)).toBe(
+      "Your budget buys 33,333 impressions and inventory supports 40,000. Delivery is limited to 33,333, 46,667 below your 80,000 minimum.",
+    );
+  });
   it("uses confidence only on KPI ties and does not discount inventory", () => {
     const data = syntheticData();
     data.benchmarks.forEach((b) => {
