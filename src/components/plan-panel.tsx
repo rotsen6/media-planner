@@ -10,7 +10,7 @@ import {
   explainRecommendation,
   impressions,
   kpiLabel,
-  legImpressions,
+  allocationImpressions,
   number,
   percent,
   productReason,
@@ -94,12 +94,12 @@ function PlanMetrics({
 function Confidence({ plan }: { plan: Plan }) {
   return (
     <div className="confidence">
-      {plan.legs.map((leg) => (
-        <div key={leg.productId}>
-          <strong>{percent(leg.confidence)}</strong>{" "}
+      {plan.allocations.map((allocation) => (
+        <div key={allocation.productId}>
+          <strong>{percent(allocation.confidence)}</strong>{" "}
           <span>
-            {plan.legs.length > 1
-              ? `${leg.name} inventory confidence`
+            {plan.allocations.length > 1
+              ? `${allocation.name} inventory confidence`
               : "inventory confidence"}
           </span>
         </div>
@@ -193,7 +193,9 @@ function ComparisonTable({ kpi, products = false, children }: {
 
 function Evidence({ result }: { result: Recommendation }) {
   const { kpi } = result.brief;
-  const legShares = result.recommended ? legImpressions(result.recommended) : [];
+  const displayedAllocationImpressions = result.recommended
+    ? allocationImpressions(result.recommended)
+    : [];
   const plans = result.recommended
     ? [result.recommended, ...result.alternatives]
     : [];
@@ -226,26 +228,26 @@ function Evidence({ result }: { result: Recommendation }) {
         {result.recommended && (
           <section>
             <h3>Allocation & source evidence</h3>
-            {result.recommended.legs.map((leg, index) => (
-              <div className="evidence-item" key={leg.productId}>
-                <h4>{leg.name}</h4>
+            {result.recommended.allocations.map((allocation, index) => (
+              <div className="evidence-item" key={allocation.productId}>
+                <h4>{allocation.name}</h4>
                 <p>
-                  {currency(leg.spend)} · {number(legShares[index])} impressions
-                  · {currency(leg.cpm)} CPM
+                  {currency(allocation.spend)} · {number(displayedAllocationImpressions[index])} impressions
+                  · {currency(allocation.cpm)} CPM
                 </p>
                 <p className="muted small">
-                  {number(leg.availableImpressions)} available impressions ·{" "}
-                  {percent(leg.confidence)} forecast confidence
+                  {number(allocation.availableImpressions)} available impressions ·{" "}
+                  {percent(allocation.confidence)} forecast confidence
                 </p>
                 <p className="muted small">
-                  Historical CTR {percent(leg.ctr)} · In-view rate{" "}
-                  {percent(leg.inViewRate)}
+                  Historical CTR {percent(allocation.ctr)} · In-view rate{" "}
+                  {percent(allocation.inViewRate)}
                 </p>
                 <p className="muted micro">
-                  Based on {number(leg.historyImpressions)} impressions,{" "}
-                  {number(leg.historyClicks)} clicks and{" "}
-                  {number(leg.historyViewableImpressions)} viewable impressions
-                  across {number(leg.historyLineItems)} line items.
+                  Based on {number(allocation.historyImpressions)} impressions,{" "}
+                  {number(allocation.historyClicks)} clicks and{" "}
+                  {number(allocation.historyViewableImpressions)} viewable impressions
+                  across {number(allocation.historyLineItems)} line items.
                 </p>
               </div>
             ))}
@@ -295,7 +297,7 @@ function Evidence({ result }: { result: Recommendation }) {
 export function PlanPanel({ chat }: { chat: Conversation }) {
   const result = chat.result?.recommendation;
   const plan = result?.recommended;
-  const pair = plan && plan.legs.length > 1;
+  const pair = plan && plan.allocations.length > 1;
   return (
     <aside className="plan-pane" aria-labelledby="plan-heading">
       <div className="panel-heading">

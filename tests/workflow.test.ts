@@ -250,6 +250,7 @@ describe("workflow", () => {
     ["A Finance brand", "Finance brand", "Orbit"],
     ["A new\nmobile app", "A new\nmobile app", "Orbit"],
     ["Our company", "Our company", "Orbit"],
+    ['Use "Our Company" as the advertiser name.', "Our Company", "Our Company"],
     ["Description: A new mobile app", "A new mobile app", "Orbit"],
     ["The General", "The General", "The General"],
     ['The app is called "A New Mobile App".', "A New Mobile App", "A New Mobile App"],
@@ -277,22 +278,33 @@ describe("workflow", () => {
     );
     expect(result.brief).toMatchObject({ budget: 2000, impressionGoal: 80000 });
   });
-  it("drops issues that reuse one quote for two fields", async () => {
-    const quote = "looking to setup an ad campaign";
+  it.each([
+    [false, "undecided"], [true, "Budget and geography are undecided"],
+  ] as const)("clarifies fields sharing a quote (null patches: %s)", async (nullPatch, quote) => {
     const result = await chat(
-      extraction({}, [
-        { field: "kpi", reason: "unsupported", quote },
-        { field: "geo", reason: "unsupported", quote },
-      ]),
-      blank,
-      game,
+      extraction(
+        nullPatch ? { budget: { value: null, quote }, geo: { value: null, quote } } : {},
+        ["budget", "geo"].map((field) => ({ field, reason: "ambiguous", quote })),
+      ),
+      complete,
+      "Budget and geography are undecided",
     );
     expect(result).toMatchObject({
       status: "clarification",
-      pending: [],
-      missing: ["vertical", "kpi", "geo", "budget"],
+      brief: { budget: null, geo: null },
+      pending: ["budget", "geo"],
+      recommendation: null,
     });
-    expect(result.explanation.join(" ")).not.toContain("supported");
+    const corrected = await chat(
+      extraction({ budget: { value: 2000, quote: "$2,000" } }),
+      result.brief, "Use $2,000", result.pending,
+    );
+    expect(corrected).toMatchObject({
+      status: "clarification",
+      brief: { budget: 2000, geo: null },
+      pending: ["geo"],
+      recommendation: null,
+    });
   });
   it.each([
     [
@@ -302,6 +314,11 @@ describe("workflow", () => {
     ["empty output", {}],
     ["intent treated as a campaign field", extraction({}, [{ field: "intent", reason: "ambiguous", quote: "CTR" }], "question")],
     ["derived value", extraction({ ctr: { value: 1, quote: "CTR" } })],
+    ["invalid KPI without an issue", extraction({ kpi: { value: "roas", quote: "CTR" } })],
+    ["invented patch quote alongside an issue", extraction({ kpi: { value: "roas", quote: "ROAS" } }, [{ field: "kpi", reason: "unsupported", quote: "CTR" }])],
+    ["unknown patch field alongside an issue", extraction({ extra: { value: 1, quote: "CTR" } }, [{ field: "kpi", reason: "unsupported", quote: "CTR" }])],
+    ["extra patch key alongside an issue", extraction({ kpi: { value: "roas", quote: "CTR", extra: true } }, [{ field: "kpi", reason: "unsupported", quote: "CTR" }])],
+    ["extra output key alongside an issue", { ...extraction({}, [{ field: "kpi", reason: "unsupported", quote: "CTR" }]), extra: true }],
   ])("rejects %s without changing the brief", async (_, output) => {
     const result = await chat(output, complete, "Set CTR to 100%");
     expect(result).toMatchObject({
@@ -310,6 +327,19 @@ describe("workflow", () => {
       brief: complete,
       recommendation: null,
     });
+  });
+  it("clarifies a grounded unsupported KPI even when its patch repeats the unsupported value", async () => {
+    const quote = "return on ad spend";
+    const result = await chat(
+      extraction({ kpi: { value: "roas", quote } }, [{ field: "kpi", reason: "unsupported", quote }]),
+      complete,
+      "Make return on ad spend our primary KPI.",
+    );
+    expect(result).toMatchObject({
+      status: "clarification", brief: { ...complete, kpi: null },
+      pending: ["kpi"], recommendation: null, modelStatus: "used",
+    });
+    expect(result.explanation[0]).toContain("supported");
   });
   it("rejects client-supplied rankings and extra input keys", async () => {
     await expect(

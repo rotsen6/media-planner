@@ -38,7 +38,7 @@ export type BriefField = keyof Brief;
 export type CompleteBrief = z.infer<typeof completeBriefSchema>;
 export const REQUIRED_FIELDS = ["vertical", "kpi", "geo", "budget"] as const;
 /** Evidence lookup keys: product and vertical for benchmarks, plus geo for inventory. */
-export const key = (...parts: string[]) => parts.join(":");
+export const evidenceKey = (...parts: string[]) => parts.join(":");
 
 export const missingFields = (brief: Brief) =>
   REQUIRED_FIELDS.filter((key) => brief[key] == null);

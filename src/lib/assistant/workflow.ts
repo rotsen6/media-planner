@@ -45,7 +45,7 @@ type Node = GraphNode<typeof State>;
 type Turn = { brief: Brief; pending: BriefField[] };
 
 /** Every answer carries the canonical brief, its open questions, and model status. */
-const turn = (
+const createTurnResponse = (
   { brief, pending }: Turn,
   status: TurnResponse["status"],
   explanation: string[],
@@ -77,38 +77,43 @@ export function createWorkflow({
   };
   const merge: Node = ({ brief, pending, extraction }) => {
     const patch: Record<string, unknown> = {};
-    const open = new Set(pending);
+    const unresolvedFields = new Set(pending);
     for (const [field, change] of Object.entries(extraction?.patch ?? {})) {
       patch[field] = change?.value;
-      open.delete(field as BriefField);
+      unresolvedFields.delete(field as BriefField);
     }
     // A newly unsupported or invalid request must invalidate any previous value.
     for (const { field } of extraction?.issues ?? []) {
       patch[field] = null;
-      open.add(field);
+      unresolvedFields.add(field);
     }
     // An unknown advertiser name clears metadata, but never blocks planning.
-    open.delete("clientName");
-    return { brief: mergeBrief(brief, patch), pending: [...open] };
+    unresolvedFields.delete("clientName");
+    return { brief: mergeBrief(brief, patch), pending: [...unresolvedFields] };
   };
   const respond: Node = async (state) => {
     const { extraction, pending } = state;
     const brief = completeBriefSchema.safeParse(state.brief);
-    const result =
-      brief.success && !pending.length
-        ? recommend(brief.data, await loadData())
-        : null;
-    const text = result
-      ? explainRecommendation(result)
-      : [explainClarification({
-          brief: state.brief,
-          changed: Object.keys(extraction?.patch ?? {}) as BriefField[],
-          issues: extraction?.issues.filter(({ field }) => pending.includes(field)),
-          pending,
-          missing: missingFields(state.brief),
-        })];
+    if (brief.success && pending.length === 0) {
+      const recommendation = recommend(brief.data, await loadData());
+      return {
+        response: createTurnResponse(
+          state,
+          recommendation.status,
+          explainRecommendation(recommendation),
+          recommendation,
+        ),
+      };
+    }
+    const clarification = explainClarification({
+      brief: state.brief,
+      changed: Object.keys(extraction?.patch ?? {}) as BriefField[],
+      issues: extraction?.issues.filter(({ field }) => pending.includes(field)),
+      pending,
+      missing: missingFields(state.brief),
+    });
     return {
-      response: turn(state, result?.status ?? "clarification", text, result),
+      response: createTurnResponse(state, "clarification", [clarification]),
     };
   };
   const graph = new StateGraph(State)
@@ -145,7 +150,8 @@ export function createWorkflow({
       for await (const update of updates) {
         if ("extract" in update) {
           onProgress?.("validate");
-          shouldAnswer = ["question", "other"].includes(update.extract?.extraction?.intent ?? "");
+          const intent = update.extract?.extraction?.intent;
+          shouldAnswer = intent === "question" || intent === "other";
         }
         if ("merge" in update) onProgress?.("respond");
         if ("respond" in update) response = update.respond?.response ?? null;
@@ -160,28 +166,26 @@ export function createWorkflow({
         return { ...verified, explanation: [text, ...verified.explanation.slice(1)] };
       } catch (error) {
         if (signal?.aborted) throw error;
+        let code: keyof typeof modelErrors | "internal" = "internal";
+        if (error instanceof ModelError) code = error.code;
+        else if (operation.aborted) code = "timeout";
         return {
           ...verified,
           modelStatus: "unavailable",
-          errorCode: error instanceof ModelError ? error.code : operation.aborted ? "timeout" : "internal",
+          errorCode: code,
           explanation: [`I couldn't generate a tailored reply. ${verified.explanation[0]}`, ...verified.explanation.slice(1)],
         };
       }
     } catch (error) {
-      const code =
-        error instanceof ModelError
-          ? error.code
-          : deadline.aborted
-            ? "timeout"
-            : "internal";
+      let code: keyof typeof modelErrors | "internal" = "internal";
+      if (error instanceof ModelError) code = error.code;
+      else if (deadline.aborted) code = "timeout";
       const explanation =
         code === "internal"
           ? "The recommendation could not be completed. Check the dataset and try again."
           : `${modelErrors[code]} Your previous brief is preserved; the new message was not applied. Please try again.`;
       return {
-        ...turn({ brief: request.brief, pending }, "error", [
-          explanation,
-        ]),
+        ...createTurnResponse({ brief: request.brief, pending }, "error", [explanation]),
         modelStatus: "unavailable",
         errorCode: code,
       };

@@ -24,9 +24,9 @@ export const number = format({ maximumFractionDigits: 1 });
 export const wholeImpressions = (value: number) =>
   Math.floor(value + tolerance(value, value));
 export const impressions = (value: number) => number(wholeImpressions(value));
-/** Whole impressions per leg that add up to the plan's whole total; the last leg takes the rounding. */
-export function legImpressions(plan: Plan): number[] {
-  const leading = plan.legs.slice(0, -1).map((leg) => wholeImpressions(leg.impressions));
+/** Whole impressions per allocation that add up to the plan's whole total; the last allocation takes the rounding. */
+export function allocationImpressions(plan: Plan): number[] {
+  const leading = plan.allocations.slice(0, -1).map((allocation) => wholeImpressions(allocation.impressions));
   return [...leading, wholeImpressions(plan.impressions) - leading.reduce((sum, n) => sum + n, 0)];
 }
 export const percent = format({ style: "percent", maximumFractionDigits: 2 });
@@ -74,16 +74,20 @@ export function alternativeReason(
     ? { ...alternative, id: alternative.productId, lowestConfidence: alternative.confidence }
     : alternative;
   const kpi = `${bundleSearchUsed ? "blended " : ""}historical ${kpiLabel(brief.kpi)}`;
+  const tieBreaker = bundleSearchUsed ? "spend" : "forecast confidence";
   const { criterion } = comparePlans(plan, otherPlan, brief.kpi, bundleSearchUsed);
   if (criterion === "id")
-    return `The ${kpi} and ${bundleSearchUsed ? "spend" : "forecast confidence"} tie; fixed product ordering selects ${plan.name}.`;
-  const field = criterion === "kpi" ? brief.kpi
-    : bundleSearchUsed ? "spend" : "lowestConfidence";
+    return `The ${kpi} and ${tieBreaker} tie; fixed product ordering selects ${plan.name}.`;
+  let field: Kpi | "spend" | "lowestConfidence" = brief.kpi;
+  let prefix = `Lower ${kpi}`;
+  if (criterion !== "kpi") {
+    field = bundleSearchUsed ? "spend" : "lowestConfidence";
+    prefix = `The ${kpi} ties; lower ${tieBreaker}`;
+  }
   const formatValue = field === "spend" ? cents : percent;
-  const [chosen, other] = [plan, otherPlan].map((p) => formatValue(p[field]));
-  const lower = criterion === "kpi" ? kpi
-    : bundleSearchUsed ? "spend" : "forecast confidence";
-  return `${criterion === "kpi" ? "Lower" : `The ${kpi} ties; lower`} ${lower} (${other} vs ${chosen})${precisionNote(chosen, other)}.`;
+  const chosen = formatValue(plan[field]);
+  const other = formatValue(otherPlan[field]);
+  return `${prefix} (${other} vs ${chosen})${precisionNote(chosen, other)}.`;
 }
 
 const labels: Record<BriefField, string> = {
@@ -135,35 +139,35 @@ export function explainClarification({
   pending: BriefField[];
   missing: BriefField[];
 }): string {
-  const flagged = new Set(issues.map((i) => i.field));
-  const got = changed.flatMap((field) => {
+  const flagged = new Set(issues.map((issue) => issue.field));
+  const accepted = changed.flatMap((field) => {
     const value = brief[field];
     return value == null || flagged.has(field) ? [] : [shown(field, value)];
   });
   const needed = missing.filter((field) => !flagged.has(field));
-  return [
-    got.length ? `Got it: ${list(got)}.` : "",
-    ...issues.map((i) =>
-      i.reason === "ambiguous" || UNKNOWN.test(i.quote)
-        ? `“${i.quote}” leaves the ${labels[i.field]} open. What ${labels[i.field]} should I use (${choices[i.field]})?`
-        : `“${i.quote}” ${verbs[i.reason]} ${labels[i.field]}. Please use ${choices[i.field]}.`,
-    ),
-    !issues.length && pending.length
-      ? `Please settle the ${list(pending.map((f) => labels[f]))}: give a value or drop it if it is optional.`
-      : "",
-    needed.length
-      ? `What ${needed.length > 1 ? "are" : "is"} your ${list(needed.map((f) => `${labels[f]} (${choices[f]})`))}?`
-      : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const sentences: string[] = [];
+  if (accepted.length) sentences.push(`Got it: ${list(accepted)}.`);
+  for (const { field, reason, quote } of issues) {
+    if (reason === "ambiguous" || UNKNOWN.test(quote)) {
+      sentences.push(`“${quote}” leaves the ${labels[field]} open. What ${labels[field]} should I use (${choices[field]})?`);
+    } else {
+      sentences.push(`“${quote}” ${verbs[reason]} ${labels[field]}. Please use ${choices[field]}.`);
+    }
+  }
+  if (!issues.length && pending.length)
+    sentences.push(`Please settle the ${list(pending.map((field) => labels[field]))}: give a value or drop it if it is optional.`);
+  if (needed.length) {
+    const fields = list(needed.map((field) => `${labels[field]} (${choices[field]})`));
+    sentences.push(`What ${needed.length > 1 ? "are" : "is"} your ${fields}?`);
+  }
+  return sentences.join(" ");
 }
 
 export const caveat =
   "Historical benchmarks are not guaranteed outcomes. History is vertical-specific, has no geography or dates, and inventory has no time dimension.";
-/** A bundle leg was selected, even when it could not meet the brief alone. */
+/** A product can be included in a bundle even when it cannot meet the brief alone. */
 const rejectedOutsidePlan = ({ recommended: plan }: Recommendation, p: EvaluatedProduct) =>
-  plan && !p.eligible && !plan.legs.some((leg) => leg.productId === p.productId);
+  plan && !p.eligible && !plan.allocations.some((allocation) => allocation.productId === p.productId);
 /** Products that rate above the plan but could not be used. */
 const rejectedAbovePlan = (
   result: Recommendation,
@@ -198,7 +202,7 @@ export function explainRecommendation(result: Recommendation): string[] {
       caveat,
     ];
   const sentences = [
-    `${plan.name} is the highest-ranked feasible ${plan.legs.length === 1 ? "single product" : "two-product fallback"}, with a ${percent(plan[brief.kpi])} historical ${kpi} benchmark.`,
+    `${plan.name} is the highest-ranked feasible ${plan.allocations.length === 1 ? "single product" : "two-product fallback"}, with a ${percent(plan[brief.kpi])} historical ${kpi} benchmark.`,
   ];
   const best = comparisonCandidate(result);
   if (best && "eligible" in best && rejectedAbovePlan(result, best))
@@ -210,14 +214,20 @@ export function explainRecommendation(result: Recommendation): string[] {
 export function answerEvidence(response: TurnResponse) {
   const result = response.recommendation;
   if (!result) return response;
-  return { ...response, recommendation: {
-    ...result,
-    evaluatedProducts: result.evaluatedProducts.map((p) => ({
-      ...p,
-      assessment: !p.eligible ? productReason(p, result.brief.impressionGoal)
-        : p.productId === result.recommended?.id ? "Selected product."
-        : alternativeReason(result, p),
-    })),
-    alternatives: result.alternatives.map((p) => ({ ...p, rankingReason: alternativeReason(result, p) })),
-  } };
+  const evaluatedProducts = result.evaluatedProducts.map((product) => {
+    let assessment: string;
+    if (!product.eligible) {
+      assessment = productReason(product, result.brief.impressionGoal);
+    } else if (product.productId === result.recommended?.id) {
+      assessment = "Selected product.";
+    } else {
+      assessment = alternativeReason(result, product);
+    }
+    return { ...product, assessment };
+  });
+  const alternatives = result.alternatives.map((plan) => ({
+    ...plan,
+    rankingReason: alternativeReason(result, plan),
+  }));
+  return { ...response, recommendation: { ...result, evaluatedProducts, alternatives } };
 }

@@ -123,9 +123,9 @@ describe("decision policy", () => {
     );
     expect(result.bundleSearchUsed).toBe(true);
     expect(result.recommended?.id).toBe("A+B");
-    expect(result.recommended?.legs.map((l) => l.impressions)).toEqual([
-      50000, 100000,
-    ]);
+    expect(
+      result.recommended?.allocations.map((allocation) => allocation.impressions),
+    ).toEqual([50000, 100000]);
     expect(result.recommended?.spend).toBe(2500);
     expect(result.recommended?.ctr).toBeCloseTo(0.02666666667);
     // Spending the remaining budget on Alpha would lower the requested rate.

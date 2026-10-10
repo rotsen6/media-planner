@@ -26,24 +26,26 @@ export async function readTurnResponse(
     const body = parseJSON(await readText(response.body, MAX_RESPONSE_BYTES));
     const result = turnResponseSchema.safeParse(body);
     if (result.success) return result.data;
-    throw new Error(
+    if (
       body &&
-        typeof body === "object" &&
-        "error" in body &&
-        typeof body.error === "string"
-        ? body.error
-        : UNREADABLE,
-    );
+      typeof body === "object" &&
+      "error" in body &&
+      typeof body.error === "string"
+    ) {
+      throw new Error(body.error);
+    }
+    throw new Error(UNREADABLE);
   }
 
   const decoder = new TextDecoder();
   let buffer = "";
-  let size = 0;
+  let receivedBytes = 0;
   let result: TurnResponse | undefined;
   for await (const chunk of readChunks(response.body)) {
-    size += chunk.byteLength;
-    if (size > MAX_RESPONSE_BYTES) throw new Error(UNREADABLE);
+    receivedBytes += chunk.byteLength;
+    if (receivedBytes > MAX_RESPONSE_BYTES) throw new Error(UNREADABLE);
     buffer += decoder.decode(chunk, { stream: true });
+    // Chunks can split JSON events; parse complete lines and retain any unfinished line.
     let newline: number;
     while ((newline = buffer.indexOf("\n")) !== -1) {
       const line = buffer.slice(0, newline);

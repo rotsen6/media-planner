@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parse } from "csv-parse/sync";
 import { z } from "zod";
-import { GEOS, key, VERTICALS } from "./brief";
+import { GEOS, evidenceKey, VERTICALS } from "./brief";
 
 const numeric = z
   .string()
@@ -47,7 +47,7 @@ const readRows = <T>(source: string, schema: z.ZodType<T>) =>
   z.array(schema).min(1).parse(parse(source, csv));
 
 // Benchmarks are ratios of totals, never averages of row rates.
-function benchmark(rows: z.infer<typeof historyRow>[]) {
+function calculateBenchmark(rows: z.infer<typeof historyRow>[]) {
   const total = (field: "impressions" | "clicks" | "viewable_impressions") =>
     rows.reduce((sum, row) => sum + row[field], 0);
   const impressions = total("impressions");
@@ -80,22 +80,22 @@ export function parseDataset(sources: DataSources) {
   if (stock.some((row) => !products.has(row.product_id)))
     throw new Error("Inventory references an unknown product");
   const inventory = new Map(
-    stock.map((r) => [key(r.product_id, r.vertical, r.geo), r]),
+    stock.map((r) => [evidenceKey(r.product_id, r.vertical, r.geo), r]),
   );
   if (inventory.size !== stock.length)
     throw new Error("Duplicate inventory key");
+  const historyGroups = Map.groupBy(history, (row) => evidenceKey(row.product_id, row.vertical));
   const benchmarks = new Map(
-    [...Map.groupBy(history, (r) => key(r.product_id, r.vertical))].map(
-      ([k, rows]) => [k, benchmark(rows)] as const,
-    ),
+    [...historyGroups].map(([groupKey, rows]) => [groupKey, calculateBenchmark(rows)] as const),
   );
-  for (const product of products.keys())
+  for (const productId of products.keys()) {
     for (const vertical of VERTICALS) {
-      if (!benchmarks.has(key(product, vertical)))
+      if (!benchmarks.has(evidenceKey(productId, vertical)))
         throw new Error("Missing product/vertical history");
-      if (GEOS.some((geo) => !inventory.has(key(product, vertical, geo))))
+      if (GEOS.some((geo) => !inventory.has(evidenceKey(productId, vertical, geo))))
         throw new Error("Missing inventory combination");
     }
+  }
   const version = createHash("sha256")
     .update(JSON.stringify(sources))
     .digest("hex")

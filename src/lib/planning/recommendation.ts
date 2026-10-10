@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   completeBriefSchema,
-  key,
+  evidenceKey,
   type CompleteBrief,
   type Kpi,
 } from "./brief";
@@ -23,7 +23,7 @@ const productFields = {
   confidence: rate,
   ...rates,
 };
-const legSchema = z.object({
+const productAllocationSchema = z.object({
   ...productFields,
   impressions: amount.positive(),
   spend: amount,
@@ -35,7 +35,7 @@ const legSchema = z.object({
 const planSchema = z.object({
   id: z.string(),
   name: z.string(),
-  legs: z.array(legSchema).min(1).max(2),
+  allocations: z.array(productAllocationSchema).min(1).max(2),
   impressions: amount.positive(),
   spend: amount,
   unspentBudget: amount,
@@ -69,7 +69,7 @@ export const recommendationSchema = z.object({
 export type Plan = z.infer<typeof planSchema>;
 export type Recommendation = z.infer<typeof recommendationSchema>;
 export type EvaluatedProduct = z.infer<typeof evaluatedSchema>;
-type Facts = ReturnType<typeof facts>;
+type ProductFacts = ReturnType<typeof getProductFacts>;
 type RankValues = [kpi: number, tieBreak: number, id: string];
 
 // Only absorb floating-point noise, never round impressions before checking a goal.
@@ -98,11 +98,11 @@ export function comparePlans(a: RankedPlan, b: RankedPlan, kpi: Kpi, bundle: boo
 }
 
 /** One product's catalog row, vertical benchmark, and vertical/geo inventory. */
-function facts(data: Dataset, brief: CompleteBrief, productId: string) {
+function getProductFacts(data: Dataset, brief: CompleteBrief, productId: string) {
   const { vertical, geo } = brief;
   const product = data.products.get(productId);
-  const history = data.benchmarks.get(key(productId, vertical));
-  const stock = data.inventory.get(key(productId, vertical, geo));
+  const history = data.benchmarks.get(evidenceKey(productId, vertical));
+  const stock = data.inventory.get(evidenceKey(productId, vertical, geo));
   if (!product || !history || !stock)
     throw new Error("Incomplete evidence for campaign brief");
   return {
@@ -121,23 +121,27 @@ function facts(data: Dataset, brief: CompleteBrief, productId: string) {
 }
 
 /** One product alone: the budget buys impressions at its CPM; raw inventory caps delivery. */
-function evaluate(brief: CompleteBrief, product: Facts): EvaluatedProduct {
+function evaluateSingleProduct(brief: CompleteBrief, product: ProductFacts): EvaluatedProduct {
   const goal = brief.impressionGoal ?? 0;
   const budgetImpressions = (brief.budget / product.cpm) * 1000;
   const available = product.availableImpressions;
   const deliverableImpressions = Math.min(budgetImpressions, available);
   const budgetShort = !atLeast(budgetImpressions, goal);
   const inventoryShort = !atLeast(available, goal);
-  const reason =
-    available === 0
-      ? "no_inventory"
-      : budgetShort && inventoryShort
-        ? "budget_and_inventory_goal"
-        : budgetShort
-          ? "budget_goal"
-          : inventoryShort
-            ? "inventory_goal"
-            : "eligible";
+
+  let reason: EvaluatedProduct["reason"];
+  if (available === 0) {
+    reason = "no_inventory";
+  } else if (budgetShort && inventoryShort) {
+    reason = "budget_and_inventory_goal";
+  } else if (budgetShort) {
+    reason = "budget_goal";
+  } else if (inventoryShort) {
+    reason = "inventory_goal";
+  } else {
+    reason = "eligible";
+  }
+
   return {
     ...product,
     budgetImpressions,
@@ -150,75 +154,93 @@ function evaluate(brief: CompleteBrief, product: Facts): EvaluatedProduct {
 
 function makePlan(
   brief: CompleteBrief,
-  ...allocations: [Facts, number][]
+  ...productImpressions: [product: ProductFacts, impressions: number][]
 ): Plan {
-  const legs = allocations.map(([product, impressions]) => ({
+  const allocations = productImpressions.map(([product, impressions]) => ({
     ...product,
     impressions,
     spend: (impressions * product.cpm) / 1000,
   }));
-  const sum = (value: (leg: (typeof legs)[number]) => number) =>
-    legs.reduce((total, leg) => total + value(leg), 0);
-  const impressions = sum((leg) => leg.impressions);
-  const spend = sum((leg) => leg.spend);
-  // A single leg keeps its benchmark exactly; a pair blends benchmarks by impressions.
-  const blend = (kpi: Kpi) =>
-    legs.length === 1
-      ? legs[0][kpi]
-      : sum((leg) => leg.impressions * leg[kpi]) / impressions;
+  let impressions = 0;
+  let spend = 0;
+  for (const allocation of allocations) {
+    impressions += allocation.impressions;
+    spend += allocation.spend;
+  }
+
+  // A single allocation keeps its benchmark exactly; a pair blends benchmarks by impressions.
+  const weightedRate = (kpi: Kpi) => {
+    if (allocations.length === 1) return allocations[0][kpi];
+    let weightedTotal = 0;
+    for (const allocation of allocations) {
+      weightedTotal += allocation.impressions * allocation[kpi];
+    }
+    return weightedTotal / impressions;
+  };
   return {
-    id: legs.map((leg) => leg.productId).join("+"),
-    name: legs.map((leg) => leg.name).join(" + "),
-    legs,
+    id: allocations.map((allocation) => allocation.productId).join("+"),
+    name: allocations.map((allocation) => allocation.name).join(" + "),
+    allocations,
     impressions,
     spend,
     unspentBudget: Math.max(0, brief.budget - spend),
-    ctr: blend("ctr"),
-    inViewRate: blend("inViewRate"),
-    lowestConfidence: Math.min(...legs.map((leg) => leg.confidence)),
+    ctr: weightedRate("ctr"),
+    inViewRate: weightedRate("inViewRate"),
+    lowestConfidence: Math.min(...allocations.map((allocation) => allocation.confidence)),
   };
 }
 
 /**
- * Best allocation across two products. The impression-weighted KPI is
- * linear-fractional, so its optimum over the feasible polygon is a vertex:
- * try every intersection of two of the six constraint lines a·x + b·y = c.
+ * Budget, inventory, and the minimum form a polygon of allowed allocations.
+ * Along each edge, the weighted rate rises, falls, or stays constant, so a best
+ * allocation is at a corner: a point where two of the limits meet.
  * Inventory adds across products as impressions, not deduplicated reach.
  */
 function bestPair(
   brief: CompleteBrief,
-  a: Facts,
-  b: Facts,
+  productA: ProductFacts,
+  productB: ProductFacts,
   compare: (a: Plan, b: Plan) => number,
 ): Plan | undefined {
   const goal = brief.impressionGoal ?? 0;
-  const [costA, costB] = [a.cpm / 1000, b.cpm / 1000];
-  const [maxA, maxB] = [a.availableImpressions, b.availableImpressions];
-  const lines = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [1, 0, maxA],
-    [0, 1, maxB],
-    [costA, costB, brief.budget],
-    [1, 1, goal],
+  const costPerImpressionA = productA.cpm / 1000;
+  const costPerImpressionB = productB.cpm / 1000;
+  const inventoryA = productA.availableImpressions;
+  const inventoryB = productB.availableImpressions;
+  // Each row means: a × impressionsA + b × impressionsB = limit.
+  const constraintLines = [
+    [1, 0, 0], // No impressions from A.
+    [0, 1, 0], // No impressions from B.
+    [1, 0, inventoryA], // All inventory from A.
+    [0, 1, inventoryB], // All inventory from B.
+    [costPerImpressionA, costPerImpressionB, brief.budget], // Full budget.
+    [1, 1, goal], // Exactly the minimum impressions.
   ];
-  const vertices = lines.flatMap(([a1, b1, c1], i) =>
-    lines.slice(i + 1).flatMap(([a2, b2, c2]) => {
+  const candidates: Plan[] = [];
+  for (let i = 0; i < constraintLines.length; i++) {
+    const [a1, b1, limit1] = constraintLines[i];
+    for (let j = i + 1; j < constraintLines.length; j++) {
+      const [a2, b2, limit2] = constraintLines[j];
       const determinant = a1 * b2 - a2 * b1;
-      if (Math.abs(determinant) < 1e-14) return [];
-      const x = (c1 * b2 - c2 * b1) / determinant;
-      const y = (a1 * c2 - a2 * c1) / determinant;
+      // Parallel limits have no unique intersection.
+      if (Math.abs(determinant) < 1e-14) continue;
+      // Solve both boundary equations for the two impression quantities.
+      const impressionsA = (limit1 * b2 - limit2 * b1) / determinant;
+      const impressionsB = (a1 * limit2 - a2 * limit1) / determinant;
+      const spend = impressionsA * costPerImpressionA + impressionsB * costPerImpressionB;
       const feasible =
-        x > 0 &&
-        y > 0 &&
-        atMost(x, maxA) &&
-        atMost(y, maxB) &&
-        atMost(x * costA + y * costB, brief.budget) &&
-        atLeast(x + y, goal);
-      return feasible ? [makePlan(brief, [a, x], [b, y])] : [];
-    }),
-  );
-  return vertices.sort(compare)[0];
+        impressionsA > 0 &&
+        impressionsB > 0 &&
+        atMost(impressionsA, inventoryA) &&
+        atMost(impressionsB, inventoryB) &&
+        atMost(spend, brief.budget) &&
+        atLeast(impressionsA + impressionsB, goal);
+      if (feasible) {
+        candidates.push(makePlan(brief, [productA, impressionsA], [productB, impressionsB]));
+      }
+    }
+  }
+  return candidates.sort(compare)[0];
 }
 
 /** The calculator has no model, I/O, session state, or side effects. */
@@ -226,26 +248,29 @@ export function recommend(input: CompleteBrief, data: Dataset): Recommendation {
   const brief = completeBriefSchema.parse(input);
   const products = [...data.products.keys()]
     .sort()
-    .map((id) => facts(data, brief, id));
-  const evaluated = products.map((product) => evaluate(brief, product));
-  const singles = products.flatMap((product, i) =>
-    evaluated[i].eligible
-      ? [makePlan(brief, [product, evaluated[i].deliverableImpressions])]
-      : [],
-  );
+    .map((id) => getProductFacts(data, brief, id));
+  const evaluated: EvaluatedProduct[] = [];
+  const candidates: Plan[] = [];
+  for (const product of products) {
+    const evaluation = evaluateSingleProduct(brief, product);
+    evaluated.push(evaluation);
+    if (evaluation.eligible) {
+      candidates.push(makePlan(brief, [product, evaluation.deliverableImpressions]));
+    }
+  }
   // Pairs are considered only when no single product meets a supplied goal.
-  const bundleSearchUsed = !singles.length && !!brief.impressionGoal;
+  const bundleSearchUsed = candidates.length === 0 && Boolean(brief.impressionGoal);
   const compare = (a: Plan, b: Plan) =>
     comparePlans(a, b, brief.kpi, bundleSearchUsed).order;
-  const candidates = (
-    bundleSearchUsed
-      ? products.flatMap((a, i) =>
-          products
-            .slice(i + 1)
-            .flatMap((b) => bestPair(brief, a, b, compare) ?? []),
-        )
-      : singles
-  ).sort(compare);
+  if (bundleSearchUsed) {
+    for (let i = 0; i < products.length; i++) {
+      for (let j = i + 1; j < products.length; j++) {
+        const pair = bestPair(brief, products[i], products[j], compare);
+        if (pair) candidates.push(pair);
+      }
+    }
+  }
+  candidates.sort(compare);
   const result = recommendationSchema.parse({
     status: candidates.length ? "ready" : "infeasible",
     brief,
@@ -270,20 +295,21 @@ export function validateRecommendation(result: Recommendation, data: Dataset) {
   const { brief, recommended, alternatives } = result;
   if ((result.status === "ready") !== !!recommended)
     throw new Error("Invalid result status");
-  for (const plan of [recommended ?? [], alternatives].flat()) {
+  const plans = recommended ? [recommended, ...alternatives] : alternatives;
+  for (const plan of plans) {
     let spend = 0;
-    for (const leg of plan.legs) {
-      const product = facts(data, brief, leg.productId);
-      if (!atMost(leg.impressions, product.availableImpressions))
+    for (const allocation of plan.allocations) {
+      const product = getProductFacts(data, brief, allocation.productId);
+      if (!atMost(allocation.impressions, product.availableImpressions))
         throw new Error("Allocation exceeds inventory");
-      spend += (leg.impressions * product.cpm) / 1000;
+      spend += (allocation.impressions * product.cpm) / 1000;
     }
-    const impressions = plan.legs.reduce(
-      (total, leg) => total + leg.impressions,
+    const impressions = plan.allocations.reduce(
+      (total, allocation) => total + allocation.impressions,
       0,
     );
     if (
-      new Set(plan.legs.map((leg) => leg.productId)).size < plan.legs.length ||
+      new Set(plan.allocations.map((allocation) => allocation.productId)).size < plan.allocations.length ||
       !nearlyEqual(plan.spend, spend) ||
       !nearlyEqual(plan.impressions, impressions) ||
       !atMost(spend, brief.budget) ||

@@ -67,7 +67,7 @@ function ChatNavigation({
           <Icon name="compose" />
           New chat
         </button>
-        {chats.length > 7 && (
+        {(chats.length > 7 || search) && (
           <label className="history-search">
             <Icon name="search" />
             <input

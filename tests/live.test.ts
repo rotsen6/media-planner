@@ -127,4 +127,20 @@ describe.skipIf(!live)("live model", { timeout: 180_000 }, () => {
       pending: [],
     });
   });
+  it.each([
+    ["Change the advertiser vertical to Healthcare.", "vertical", null],
+    ["The budget is negative $500.", "budget", null],
+    ['Use "Our Company" as the advertiser name.', "clientName", "Our Company"],
+  ] as const)("handles the requested field without changing the rest: %s", async (message, field, value) => {
+    const brief = {
+      clientName: "Acme Shoes", vertical: "Retail", geo: "US", kpi: "ctr",
+      budget: 30000, impressionGoal: 700000,
+    };
+    const result = await chat({ brief, message });
+    expect(result.brief).toEqual({ ...brief, [field]: value });
+    expect(result.errorCode).toBeUndefined();
+    expect(result.status).toBe(value === null ? "clarification" : "ready");
+    expect(result.pending).toEqual(value === null ? [field] : []);
+    if (value === null) expect(result.recommendation).toBeNull();
+  });
 });

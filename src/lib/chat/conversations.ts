@@ -14,13 +14,19 @@ const FIELDS = briefFieldSchema.options;
 const restoreBrief = (value: unknown) => {
   const chat = value as { brief?: Brief; form?: Record<string, string> } | null;
   if (!chat?.form || chat.brief) return value;
+  const form = chat.form;
   return {
     ...chat,
-    brief: Object.fromEntries(FIELDS.map((key) => {
-      const value = chat.form![key]?.trim();
-      const field = !value ? null : key === "budget" || key === "impressionGoal" ? Number(value) : value;
-      return [key, briefSchema.shape[key].safeParse(field).data ?? null];
-    })),
+    brief: Object.fromEntries(
+      FIELDS.map((key) => {
+        const text = form[key]?.trim();
+        let field: string | number | null = text || null;
+        if (text && (key === "budget" || key === "impressionGoal")) {
+          field = Number(text);
+        }
+        return [key, briefSchema.shape[key].safeParse(field).data ?? null];
+      }),
+    ),
   };
 };
 
@@ -115,7 +121,14 @@ const sameBrief = (brief: Brief, response: TurnResponse) =>
 /** A corrupt store is reported, never silently overwritten by a new workspace. */
 export function restoreWorkspace(raw: string | null): WorkspaceState | null {
   if (raw === null) return null;
-  const saved = workspaceSchema.parse(JSON.parse(raw));
+  const saved = workspaceSchema.parse(JSON.parse(raw, (_key, value) => {
+    // Earlier saved plans called product allocations "legs".
+    if (value && typeof value === "object" && "legs" in value && !("allocations" in value)) {
+      const { legs, ...plan } = value;
+      return { ...plan, allocations: legs };
+    }
+    return value;
+  }));
   if (new Set(saved.chats.map((c) => c.id)).size !== saved.chats.length)
     throw new Error("Duplicate chat IDs");
   const chats = saved.chats.map((stored): Conversation => {
@@ -231,28 +244,33 @@ export function workspaceReducer(
         : state;
     case "remove": {
       const chats = state.chats.filter((c) => c.id !== action.id);
-      const activeId =
-        state.activeId === action.id
-          ? (historyChats({ ...state, chats })[0]?.id ??
-            chats[0]?.id ??
-            action.replacement.id)
-          : state.activeId;
+      let activeId = state.activeId;
+      if (activeId === action.id) {
+        activeId =
+          historyChats({ ...state, chats })[0]?.id ??
+          chats[0]?.id ??
+          action.replacement.id;
+      }
       if (!chats.some((c) => c.id === activeId)) chats.push(action.replacement);
       return { ...state, chats, activeId };
     }
     case "evidence":
       return {
         ...state,
-        chats: state.chats.map((chat) =>
-          chat.result?.recommendation &&
-          chat.result.recommendation.datasetVersion !== action.version
-            ? {
-                ...invalidate(chat),
-                error:
-                  "The source data has changed. Update this plan to use the current evidence.",
-              }
-            : chat,
-        ),
+        chats: state.chats.map((chat) => {
+          const recommendation = chat.result?.recommendation;
+          if (
+            !recommendation ||
+            recommendation.datasetVersion === action.version
+          ) {
+            return chat;
+          }
+          return {
+            ...invalidate(chat),
+            error:
+              "The source data has changed. Update this plan to use the current evidence.",
+          };
+        }),
       };
     default:
       return {
@@ -294,10 +312,13 @@ function updateChat(chat: Conversation, action: ChatAction): Conversation {
         ],
       };
     case "progress":
-      return chat.request?.id === action.requestId &&
-        chat.request.stage !== action.stage
-        ? { ...chat, request: { ...chat.request, stage: action.stage } }
-        : chat;
+      if (
+        chat.request?.id !== action.requestId ||
+        chat.request.stage === action.stage
+      ) {
+        return chat;
+      }
+      return { ...chat, request: { ...chat.request, stage: action.stage } };
     case "resolve": {
       // Late answers to a stopped or replaced request are ignored.
       if (chat.request?.id !== action.requestId) return chat;

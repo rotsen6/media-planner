@@ -34,7 +34,8 @@ export async function revealText(
       }
       // Schedule before dispatch so cancellation from the callback clears it too.
       const end = character.value.index + character.value.segment.length;
-      timer = setTimeout(step, end === text.length ? pauseAfter : CHARACTER_INTERVAL_MS);
+      const delay = end === text.length ? pauseAfter : CHARACTER_INTERVAL_MS;
+      timer = setTimeout(step, delay);
       onText(text.slice(0, end));
     };
     signal.addEventListener("abort", abort, { once: true });

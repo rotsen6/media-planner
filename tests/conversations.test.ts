@@ -222,6 +222,34 @@ describe("saved conversations", () => {
     expect(first(restored).result).toEqual(response);
     expect(first(restored)).not.toHaveProperty("form");
   });
+  it("restores legacy bundle allocations and saves only the current field name", () => {
+    const bundleBrief = { ...brief, budget: 3000, impressionGoal: 150000 };
+    const response = {
+      ...result,
+      brief: bundleBrief,
+      recommendation: recommend(bundleBrief, syntheticData()),
+    };
+    expect(response.recommendation.recommended!.allocations).toHaveLength(2);
+    expect(response.recommendation.alternatives).toHaveLength(2);
+    const state = workspace(start, { ...resolve, response }, draft("Keep this draft"));
+    const legacy = JSON.parse(JSON.stringify(state).replaceAll('"allocations":', '"legs":'));
+    const restored = restoreSaved(legacy);
+    expect(restored).toEqual(state);
+    expect(JSON.stringify(restored)).not.toContain('"legs":');
+    expect(restoreSaved(restored)).toEqual(state);
+    const canonical = JSON.parse(JSON.stringify(state));
+    canonical.chats[0].result.recommendation.recommended.legs = [];
+    expect(restoreSaved(canonical)).toEqual(state);
+  });
+  it.each(["allocations", "legs"] as const)("rejects invalid saved %s without falling back to legacy data", (field) => {
+    const state = workspace(start, resolve);
+    const saved = JSON.parse(JSON.stringify(state));
+    const plan = saved.chats[0].result.recommendation.recommended;
+    plan.legs = plan.allocations;
+    delete plan.allocations;
+    plan[field] = [{ ...plan.legs[0], impressions: -1 }];
+    expect(first(restoreSaved(saved))).toEqual({ ...first(state), result: null, dirty: true });
+  });
   it("rejects corrupt or unsupported stores instead of silently replacing them", () => {
     expect(restoreWorkspace(null)).toBeNull();
     expect(() => restoreWorkspace("invalid json")).toThrow();

@@ -1,6 +1,6 @@
 # Media planner library
 
-TypeScript calculates and ranks plans; the LLM extracts campaign details and answers questions.
+TypeScript calculates and ranks plans; the LLM extracts campaign details and answers questions. A product allocation is the impressions and spend assigned to one product in a plan.
 
 ## Following a request
 
