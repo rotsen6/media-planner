@@ -214,6 +214,16 @@ describe("workflow", () => {
       expect(model.answer).toHaveBeenCalledOnce();
     },
   );
+  it("ignores an invented advertiser-name issue in a product question", async () => {
+    const message = "Why not Social Amplifier, with 91% inventory confidence?";
+    const brief = { ...complete, clientName: "Stellar Bank" };
+    const model = fake(extraction({}, [
+      { field: "clientName", reason: "ambiguous", quote: message },
+    ], "question"));
+    const result = await workflow(model)(request(brief, message));
+    expect(result.brief).toEqual(brief);
+    expect(model.answer).toHaveBeenCalledOnce();
+  });
   it("keeps the verified plan when the overall deadline expires during answering", async () => {
     const deadline = new AbortController();
     vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);

@@ -49,8 +49,8 @@
 <rect data-label="ollama-workflow-488" x="908" y="456" width="128" height="24" fill="#ffffff"/>
 <text x="908" y="472" font-size="16" fill="#68768a" font-weight="400">Intent + patch</text>
 <path data-source="workflow" data-target="ollama" d="M892 660 H1140" fill="none" stroke="#b45d14" stroke-width="2" marker-end="url(#turn-lifecycle-orange)"/>
-<rect data-label="workflow-ollama-660" x="908" y="628" width="108" height="24" fill="#ffffff"/>
-<text x="908" y="644" font-size="16" fill="#b45d14" font-weight="400">Explain plan</text>
+<rect data-label="workflow-ollama-660" x="908" y="628" width="136" height="24" fill="#ffffff"/>
+<text x="908" y="644" font-size="16" fill="#b45d14" font-weight="400">Answer message</text>
 <path data-source="ollama" data-target="workflow" d="M1140 716 H892" fill="none" stroke="#68768a" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#turn-lifecycle-muted)"/>
 <rect data-label="ollama-workflow-716" x="908" y="684" width="92" height="24" fill="#ffffff"/>
 <text x="908" y="700" font-size="16" fill="#68768a" font-weight="400">Reply text</text>

@@ -87,15 +87,16 @@ describe.skipIf(!live)("live model", { timeout: 180_000 }, () => {
   it.each([
     { name: "Finance", brief: { vertical: "Finance", geo: "EMEA", kpi: "ctr", budget: 25000, impressionGoal: null }, message: "Why not attention builder if higher inventory confidence?" },
     { name: "Retail", brief: { clientName: "Acme Shoes", vertical: "Retail", geo: "US", kpi: "ctr", budget: 30000, impressionGoal: null }, message: "why not Attention Builder, with 93% inventory confidence?" },
-  ])("answers a confidence comparison and resolves a follow-up reference from history: $name", async ({ brief, message }) => {
+    { name: "Stellar Bank", brief: { clientName: "Stellar Bank", vertical: "Finance", geo: "US", kpi: "ctr", budget: 20000, impressionGoal: 800000 }, product: "Social Amplifier", message: "Why not Social Amplifier, with 91% inventory confidence?" },
+  ])("answers a confidence comparison and resolves a follow-up reference from history: $name", async ({ brief, message, product = "Attention Builder" }) => {
     const first = await chat({ brief, message });
     expect(first.brief).toMatchObject(brief);
     const plan = first.recommendation!;
-    const candidate = plan.evaluatedProducts.find((p) => p.name === "Attention Builder")!;
+    const candidate = plan.evaluatedProducts.find((p) => p.name === product)!;
     for (const value of [candidate.ctr, plan.recommended!.ctr])
       expect(first.explanation[0]).toContain(percent(value));
     expect(first.explanation[0]).toMatch(/higher (?:inventory )?confidence/i);
-    expect(first.explanation[0]).toMatch(/prioriti[sz]|tie|equal/i);
+    expect(first.explanation[0]).toMatch(/prioriti[sz]|primary|tie|equal/i);
     const second = await chat({
       brief: first.brief,
       history: [{ role: "user", text: message }, { role: "assistant", text: first.explanation[0].slice(0, 1000) }],
@@ -129,6 +130,7 @@ describe.skipIf(!live)("live model", { timeout: 180_000 }, () => {
   });
   it.each([
     ["Change the advertiser vertical to Healthcare.", "vertical", null],
+    ["What if geography were Canada?", "geo", null],
     ["The budget is negative $500.", "budget", null],
     ['Use "Our Company" as the advertiser name.', "clientName", "Our Company"],
   ] as const)("handles the requested field without changing the rest: %s", async (message, field, value) => {
