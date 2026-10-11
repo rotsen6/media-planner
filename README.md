@@ -1,10 +1,14 @@
+<img src="docs/assets/kargo-wordmark.svg" alt="Kargo" width="180" />
+
 # Kargo Media Planner
 
-A Next.js media planner. Ollama interprets chat; TypeScript calculates and ranks plans; LangGraph connects the steps.
+Turn a campaign brief into an explained media plan, all running locally.
+
+Built with Next.js. Ollama interprets chat; TypeScript calculates and ranks plans; LangGraph connects the steps.
 
 ## Run
 
-Use Node.js 24 and npm. The supplied data is included; no `.env` is needed.
+Install [Node.js 24 LTS](https://nodejs.org/en/download) if needed; npm is included. The supplied data is included; no `.env` is needed.
 
 Install [Ollama](https://ollama.com/download) and start its app, or leave `ollama serve` running in a separate terminal. It provides the local LLM HTTP API at `http://127.0.0.1:11434`. From the repository root:
 
