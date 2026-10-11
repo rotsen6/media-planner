@@ -1,6 +1,6 @@
 <img src="docs/assets/kargo-wordmark.svg" alt="Kargo" width="180" />
 
-# Kargo Media Planner
+# Media Planner
 
 Turn a campaign brief into an explained media plan, all running locally.
 
